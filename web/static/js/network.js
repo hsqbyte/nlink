@@ -8,6 +8,7 @@ let netSelectedId = null;
 const NET_COLORS = {
   self:   { background: '#0071E3', border: '#005BB5', font: '#fff', highlight: { background: '#339AF0', border: '#0071E3' } },
   peer:   { background: '#34C759', border: '#28A746', font: '#fff', highlight: { background: '#5BD778', border: '#34C759' } },
+  peerOff:{ background: '#FF3B30', border: '#D32F2F', font: '#fff', highlight: { background: '#FF6B60', border: '#FF3B30' } },
   remote: { background: '#8E8E93', border: '#6D6D72', font: '#fff', highlight: { background: '#A8A8AD', border: '#8E8E93' } },
   upstream:    { background: '#34C759', border: '#28A746', font: '#fff', highlight: { background: '#5BD778', border: '#34C759' } },
   upstreamOff: { background: '#FF3B30', border: '#D32F2F', font: '#fff', highlight: { background: '#FF6B60', border: '#FF3B30' } }
@@ -73,20 +74,23 @@ async function initNetwork() {
       const pid = c.name || c.conn_id;
       const label = c.name || '#' + c.conn_id;
       const proxyNames = c.proxies || [];
+      const isConnected = c.connected !== false;
       nodes.push({
         id: pid, label: label, shape: 'circle', size: 32,
-        color: NET_COLORS.peer, font: { color: '#fff', size: 13 }
+        color: isConnected ? NET_COLORS.peer : NET_COLORS.peerOff,
+        font: { color: '#fff', size: 13 }
       });
       // Edge label shows proxy ports
       const edgeLabel = netEdgeLabel(selfProxies, pid);
       edges.push({
         from: 'self', to: pid, width: 2,
-        color: { color: '#C8C8CC', highlight: '#0071E3' },
+        color: { color: isConnected ? '#34C759' : '#FF3B30', highlight: '#0071E3' },
         label: edgeLabel,
-        font: { size: 10, color: '#8E8E93', strokeWidth: 3, strokeColor: '#fff', align: 'middle', multi: false }
+        font: { size: 10, color: '#8E8E93', strokeWidth: 3, strokeColor: '#fff', align: 'middle', multi: false },
+        dashes: isConnected ? false : [5, 5]
       });
       netNodeData[pid] = {
-        type: 'peer', info: { proxies_names: proxyNames }, proxies: [],
+        type: 'peer', info: { proxies_names: proxyNames, connected: isConnected }, proxies: [],
         gateway: null, path: [], label: label
       };
     });
@@ -246,6 +250,12 @@ async function loadNetDetail(id) {
     return;
   }
 
+  // 断开的节点直接渲染，不尝试获取配置
+  if (nd.info.connected === false) {
+    renderPeerDetail(id, nd);
+    return;
+  }
+
   detail.innerHTML = '<div class="net-detail-empty">加载中...</div>';
   detail.classList.add('show');
   try {
@@ -315,8 +325,12 @@ function renderUpstreamDetail(id, nd) {
 function renderPeerDetail(id, nd) {
   const i = nd.info;
   const depth = netGetDepth(id);
+  const isConnected = i.connected !== false;
+  const statusBadge = isConnected
+    ? '<span class="badge badge-green">在线</span>'
+    : '<span class="badge badge-red">已断开</span>';
 
-  let h = '<div class="net-detail-header"><h2>节点 ' + esc(nd.label) + '</h2><span class="badge badge-green">在线</span></div>';
+  let h = '<div class="net-detail-header"><h2>节点 ' + esc(nd.label) + '</h2>' + statusBadge + '</div>';
   h += '<div class="net-info-grid">';
   h += netInfoItem('节点名称', id);
   if (i.peer_addr) h += netInfoItem('上游地址', i.peer_addr + ':' + i.peer_port);

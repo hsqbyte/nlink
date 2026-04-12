@@ -29,6 +29,9 @@ type TunnelService struct {
 	// 对端全局连接池: connID -> pool channel
 	peerPools map[string]chan net.Conn
 
+	// 已断开的对端（保留供 Dashboard 显示）
+	disconnectedPeers map[string]*DisconnectedPeer // key: peerName
+
 	// 上游连接（本节点主动连接的对端）
 	upstreamMu    sync.RWMutex
 	upstreamPeers map[string]*UpstreamPeer // key: addr:port
@@ -48,16 +51,17 @@ var tunnelSvc *TunnelService
 // InitTunnelService 初始化隧道服务
 func InitTunnelService(tcpServer *tcp.Server, workConnTimeout int) {
 	tunnelSvc = &TunnelService{
-		proxies:         make(map[string]*TCPProxy),
-		peerProxies:     make(map[string][]string),
-		peerNames:       make(map[string]string),
-		nameToConnID:    make(map[string]string),
-		peerPools:       make(map[string]chan net.Conn),
-		upstreamPeers:   make(map[string]*UpstreamPeer),
-		tcpServer:       tcpServer,
-		workConnTimeout: time.Duration(workConnTimeout) * time.Second,
-		startTime:       time.Now(),
-		pendingRequests: make(map[string]chan *tcp.Response),
+		proxies:           make(map[string]*TCPProxy),
+		peerProxies:       make(map[string][]string),
+		peerNames:         make(map[string]string),
+		nameToConnID:      make(map[string]string),
+		peerPools:         make(map[string]chan net.Conn),
+		disconnectedPeers: make(map[string]*DisconnectedPeer),
+		upstreamPeers:     make(map[string]*UpstreamPeer),
+		tcpServer:         tcpServer,
+		workConnTimeout:   time.Duration(workConnTimeout) * time.Second,
+		startTime:         time.Now(),
+		pendingRequests:   make(map[string]chan *tcp.Response),
 	}
 }
 
@@ -72,14 +76,15 @@ func EnsureTunnelService() {
 		return
 	}
 	tunnelSvc = &TunnelService{
-		proxies:         make(map[string]*TCPProxy),
-		peerProxies:     make(map[string][]string),
-		peerNames:       make(map[string]string),
-		nameToConnID:    make(map[string]string),
-		peerPools:       make(map[string]chan net.Conn),
-		upstreamPeers:   make(map[string]*UpstreamPeer),
-		startTime:       time.Now(),
-		pendingRequests: make(map[string]chan *tcp.Response),
+		proxies:           make(map[string]*TCPProxy),
+		peerProxies:       make(map[string][]string),
+		peerNames:         make(map[string]string),
+		nameToConnID:      make(map[string]string),
+		peerPools:         make(map[string]chan net.Conn),
+		disconnectedPeers: make(map[string]*DisconnectedPeer),
+		upstreamPeers:     make(map[string]*UpstreamPeer),
+		startTime:         time.Now(),
+		pendingRequests:   make(map[string]chan *tcp.Response),
 	}
 }
 
@@ -91,6 +96,8 @@ func (ts *TunnelService) RegisterPeerName(connID, name string) {
 	defer ts.mu.Unlock()
 	ts.peerNames[connID] = name
 	ts.nameToConnID[name] = connID
+	// 清除断开记录（对端重连了）
+	delete(ts.disconnectedPeers, name)
 }
 
 // IsPeerNameTaken 检查对端名称是否已被占用
@@ -202,6 +209,14 @@ func (ts *TunnelService) RemovePeerProxies(connID string) {
 
 	names, ok := ts.peerProxies[connID]
 	if ok {
+		// 记录断开的对端（供 Dashboard 展示）
+		if peerName, hasName := ts.peerNames[connID]; hasName {
+			ts.disconnectedPeers[peerName] = &DisconnectedPeer{
+				Name:    peerName,
+				Proxies: names,
+			}
+		}
+
 		for _, name := range names {
 			if proxy, exists := ts.proxies[name]; exists {
 				proxy.Close()
@@ -354,16 +369,24 @@ func (ts *TunnelService) KickPeer(connID string) bool {
 	return true
 }
 
-// ListPeers 列出所有在线对端
+// ListPeers 列出所有对端（含在线和已断开）
 func (ts *TunnelService) ListPeers() []PeerInfo {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	result := make([]PeerInfo, 0, len(ts.peerProxies))
+	result := make([]PeerInfo, 0, len(ts.peerProxies)+len(ts.disconnectedPeers))
 	for connID, names := range ts.peerProxies {
 		result = append(result, PeerInfo{
-			ConnID:  connID,
-			Name:    ts.peerNames[connID],
-			Proxies: names,
+			ConnID:    connID,
+			Name:      ts.peerNames[connID],
+			Proxies:   names,
+			Connected: true,
+		})
+	}
+	for _, dp := range ts.disconnectedPeers {
+		result = append(result, PeerInfo{
+			Name:      dp.Name,
+			Proxies:   dp.Proxies,
+			Connected: false,
 		})
 	}
 	return result
@@ -371,9 +394,16 @@ func (ts *TunnelService) ListPeers() []PeerInfo {
 
 // PeerInfo 对端信息
 type PeerInfo struct {
-	ConnID  string   `json:"conn_id"`
-	Name    string   `json:"name"`
-	Proxies []string `json:"proxies"`
+	ConnID    string   `json:"conn_id"`
+	Name      string   `json:"name"`
+	Proxies   []string `json:"proxies"`
+	Connected bool     `json:"connected"`
+}
+
+// DisconnectedPeer 已断开的对端记录
+type DisconnectedPeer struct {
+	Name    string
+	Proxies []string
 }
 
 // ---- 上游连接管理 ----
