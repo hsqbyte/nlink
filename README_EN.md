@@ -127,6 +127,8 @@ node:
     enabled: true                   #   Enable/disable (default true)
     port: 18080                     #   HTTP port
     shutdown_timeout: 30            #   Graceful shutdown timeout (seconds)
+    username: "admin"               #   Login username (empty = no auth)
+    password: "admin"               #   Login password
 
 peers:                              # Optional — nodes to actively connect to
   - addr: "192.168.1.100"

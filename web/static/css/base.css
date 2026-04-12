@@ -44,6 +44,12 @@ body {
   -webkit-text-fill-color: transparent;
 }
 .nav-r { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--text2); }
+.nav-logout {
+  background: none; border: 1px solid var(--border); border-radius: 8px;
+  padding: 4px 10px; font-size: 14px; cursor: pointer; color: var(--text2);
+  transition: all .2s; line-height: 1;
+}
+.nav-logout:hover { background: rgba(255,59,48,0.1); border-color: #FF3B30; color: #FF3B30; }
 
 .dot {
   width: 6px; height: 6px; border-radius: 50%;

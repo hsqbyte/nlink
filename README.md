@@ -127,6 +127,8 @@ node:
     enabled: true                   #   是否启用 (默认 true)
     port: 18080                     #   HTTP 端口
     shutdown_timeout: 30            #   优雅关闭超时(秒)
+    username: "admin"               #   登录用户名 (留空则不启用认证)
+    password: "admin"               #   登录密码
 
 peers:                              # 可选 — 主动连接的对端节点
   - addr: "192.168.1.100"

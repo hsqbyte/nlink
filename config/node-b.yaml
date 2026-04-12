@@ -5,6 +5,8 @@ node:
   dashboard:
     enabled: true
     port: 18081
+    username: "admin"
+    password: "admin"
 
 peers:
   - addr: "127.0.0.1"

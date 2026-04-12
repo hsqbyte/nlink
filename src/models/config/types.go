@@ -20,9 +20,11 @@ type ListenConfig struct {
 
 // DashboardConfig 管理面板配置
 type DashboardConfig struct {
-	Enabled         *bool `yaml:"enabled"`          // 是否启用 (默认 true)
-	Port            int   `yaml:"port"`             // HTTP 端口
-	ShutdownTimeout int   `yaml:"shutdown_timeout"` // 优雅关闭超时(秒)
+	Enabled         *bool  `yaml:"enabled"`          // 是否启用 (默认 true)
+	Port            int    `yaml:"port"`             // HTTP 端口
+	ShutdownTimeout int    `yaml:"shutdown_timeout"` // 优雅关闭超时(秒)
+	Username        string `yaml:"username"`         // 登录用户名 (留空则不启用认证)
+	Password        string `yaml:"password"`         // 登录密码
 }
 
 // IsEnabled 返回面板是否启用
@@ -34,6 +36,14 @@ func (d *DashboardConfig) IsEnabled() bool {
 		return true // 默认启用
 	}
 	return *d.Enabled
+}
+
+// AuthRequired 返回是否需要登录认证
+func (d *DashboardConfig) AuthRequired() bool {
+	if d == nil {
+		return false
+	}
+	return d.Username != "" && d.Password != ""
 }
 
 // PeerConfig 对端节点配置

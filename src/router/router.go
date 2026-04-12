@@ -19,7 +19,12 @@ func init() {
 	Engine = gin.New()
 	Engine.Use(gin.Logger(), middleware.RecoveryMiddleware(), middleware.CORSMiddleware())
 
+	// 登录/登出（不需要认证）
+	Engine.POST("/api/v1/login", middleware.HandleLogin)
+	Engine.POST("/api/v1/logout", middleware.HandleLogout)
+
 	APIRouter = Engine.Group("/api/v1")
+	APIRouter.Use(middleware.AuthMiddleware())
 
 	// TCP 路由
 	TCPRouter = tcp.NewRouter()
