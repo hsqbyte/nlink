@@ -16,6 +16,7 @@ const (
 // Codec 长度头协议编解码器
 type Codec struct {
 	maxMessageSize int
+	crypto         *Crypto // 可选加密层
 }
 
 // NewCodec 创建编解码器
@@ -24,6 +25,11 @@ func NewCodec(maxMessageSize int) *Codec {
 		maxMessageSize = defaultMaxSize
 	}
 	return &Codec{maxMessageSize: maxMessageSize}
+}
+
+// SetCrypto 设置加密器（启用后所有消息加解密）
+func (c *Codec) SetCrypto(cr *Crypto) {
+	c.crypto = cr
 }
 
 // Decode 从 gnet.Conn 解码一条完整消息
@@ -38,8 +44,15 @@ func (c *Codec) Decode(conn gnet.Conn) (*Message, error) {
 	lenBuf, _ := conn.Peek(headerLen)
 	msgLen := int(binary.BigEndian.Uint32(lenBuf))
 
-	if msgLen <= 0 || msgLen > c.maxMessageSize {
-		return nil, fmt.Errorf("消息长度无效: %d (最大: %d)", msgLen, c.maxMessageSize)
+	if msgLen <= 0 {
+		return nil, fmt.Errorf("消息长度无效: %d", msgLen)
+	}
+	maxSize := c.maxMessageSize
+	if c.crypto != nil {
+		maxSize += c.crypto.Overhead()
+	}
+	if msgLen > maxSize {
+		return nil, fmt.Errorf("消息长度超限: %d (最大: %d)", msgLen, maxSize)
 	}
 
 	// 等待完整消息
@@ -53,6 +66,15 @@ func (c *Codec) Decode(conn gnet.Conn) (*Message, error) {
 	payload := make([]byte, msgLen)
 	copy(payload, buf[headerLen:totalLen])
 	_, _ = conn.Discard(totalLen)
+
+	// 解密（如果启用）
+	if c.crypto != nil {
+		decrypted, err := c.crypto.Decrypt(payload)
+		if err != nil {
+			return nil, fmt.Errorf("解密失败: %w", err)
+		}
+		payload = decrypted
+	}
 
 	// 解析 JSON
 	var msg Message
@@ -70,6 +92,14 @@ func (c *Codec) Encode(resp *Response) ([]byte, error) {
 		return nil, fmt.Errorf("JSON编码失败: %w", err)
 	}
 
+	// 加密（如果启用）
+	if c.crypto != nil {
+		payload, err = c.crypto.Encrypt(payload)
+		if err != nil {
+			return nil, fmt.Errorf("加密失败: %w", err)
+		}
+	}
+
 	buf := make([]byte, headerLen+len(payload))
 	binary.BigEndian.PutUint32(buf[:headerLen], uint32(len(payload)))
 	copy(buf[headerLen:], payload)
@@ -81,6 +111,14 @@ func (c *Codec) EncodeMessage(msg *Message) ([]byte, error) {
 	payload, err := json.Marshal(msg)
 	if err != nil {
 		return nil, fmt.Errorf("JSON编码失败: %w", err)
+	}
+
+	// 加密（如果启用）
+	if c.crypto != nil {
+		payload, err = c.crypto.Encrypt(payload)
+		if err != nil {
+			return nil, fmt.Errorf("加密失败: %w", err)
+		}
 	}
 
 	buf := make([]byte, headerLen+len(payload))

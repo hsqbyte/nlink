@@ -39,6 +39,16 @@ func NewServer() (*Server, error) {
 	}
 	server.TCP = tcp.NewServer(lc.Port, lc.MaxMessageSize, lc.HeartbeatTimeout, router.TCPRouter, opts...)
 
+	// 启用控制通道加密
+	if cfg.Node.Token != "" {
+		cr, err := tcp.NewCrypto(cfg.Node.Token)
+		if err != nil {
+			return nil, fmt.Errorf("加密初始化失败: %w", err)
+		}
+		server.TCP.Codec().SetCrypto(cr)
+		logger.Info("控制通道加密已启用 (AES-256-GCM)")
+	}
+
 	// 初始化隧道服务
 	services.InitTunnelService(server.TCP, lc.WorkConnTimeout)
 

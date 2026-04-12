@@ -31,12 +31,21 @@ type Client struct {
 	authenticated bool   // 是否曾认证成功
 	poolCount     int    // 全局预建连接数
 	connID        string // 对端分配的连接ID
+	crypto        *tcp.Crypto // 控制通道加密
 }
 
 func Run(nodeName string, cfg *modelConfig.PeerConfig) error {
 	delay := reconnectBaseDelay
 	for {
 		c := &Client{nodeName: nodeName, cfg: cfg, done: make(chan struct{})}
+		// 初始化控制通道加密
+		if cfg.Token != "" {
+			cr, err := tcp.NewCrypto(cfg.Token)
+			if err != nil {
+				return fmt.Errorf("加密初始化失败: %w", err)
+			}
+			c.crypto = cr
+		}
 		err := c.run()
 		if err == nil {
 			return nil
@@ -555,7 +564,19 @@ func (c *Client) replyCmd(seq, cmd string, code int, message string, data interf
 		Seq:  seq,
 		Data: mustMarshal(payload),
 	}
-	buf := tcp.EncodeMessage(&msg)
+	msgBytes, _ := json.Marshal(msg)
+
+	// 加密（如果启用）
+	if c.crypto != nil {
+		encrypted, err := c.crypto.Encrypt(msgBytes)
+		if err == nil {
+			msgBytes = encrypted
+		}
+	}
+
+	buf := make([]byte, 4+len(msgBytes))
+	binary.BigEndian.PutUint32(buf[:4], uint32(len(msgBytes)))
+	copy(buf[4:], msgBytes)
 	c.mu.Lock()
 	c.conn.Write(buf)
 	c.mu.Unlock()
@@ -576,7 +597,20 @@ func (c *Client) sendMsgLocked(cmd string, data interface{}) error {
 	if data != nil {
 		msg.Data = mustMarshal(data)
 	}
-	buf := tcp.EncodeMessage(&msg)
+	payload, _ := json.Marshal(msg)
+
+	// 加密（如果启用）
+	if c.crypto != nil {
+		encrypted, err := c.crypto.Encrypt(payload)
+		if err != nil {
+			return fmt.Errorf("加密失败: %w", err)
+		}
+		payload = encrypted
+	}
+
+	buf := make([]byte, 4+len(payload))
+	binary.BigEndian.PutUint32(buf[:4], uint32(len(payload)))
+	copy(buf[4:], payload)
 	_, err := c.conn.Write(buf)
 	return err
 }
@@ -594,6 +628,16 @@ func (c *Client) readMsg() (*tcp.Response, error) {
 	if _, err := io.ReadFull(c.conn, body); err != nil {
 		return nil, err
 	}
+
+	// 解密（如果启用）
+	if c.crypto != nil {
+		decrypted, err := c.crypto.Decrypt(body)
+		if err != nil {
+			return nil, fmt.Errorf("解密失败: %w", err)
+		}
+		body = decrypted
+	}
+
 	var resp tcp.Response
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, err
