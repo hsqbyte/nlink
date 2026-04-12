@@ -1,0 +1,239 @@
+/* Network full layout */
+#clients.panel {
+  margin: 0 -24px;
+}
+.net-layout {
+  position: relative;
+  height: calc(100vh - 120px);
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 0.5px solid var(--glass-border);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+/* ── Toolbar ── */
+.net-graph-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  z-index: 5;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+}
+.net-graph-toolbar span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.net-graph-toolbar .btn {
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
+/* ── Graph Canvas (full area) ── */
+.net-graph {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+.net-graph canvas { outline: none; }
+
+/* ── Detail Overlay Card (bottom-right) ── */
+.net-detail-card {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 340px;
+  max-height: 60%;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  border-radius: 14px;
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  z-index: 10;
+  display: none;
+}
+.net-detail-card.show {
+  display: flex;
+  flex-direction: column;
+}
+.net-detail-card .net-detail-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  transition: background 0.15s;
+}
+.net-detail-card .net-detail-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* ── Detail Panel Content ── */
+.net-detail-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text2);
+  font-size: 13px;
+}
+
+.net-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
+}
+.net-detail-header h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Info grid */
+.net-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  padding: 10px 16px;
+}
+.net-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.net-info-item .label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.net-info-item .value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Sections */
+.net-section {
+  padding: 0 16px 14px;
+}
+.net-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.net-section-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+
+/* Proxy cards */
+.net-proxy-list { display: flex; flex-direction: column; gap: 6px; }
+.net-proxy-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.02);
+  border: 0.5px solid rgba(0, 0, 0, 0.05);
+  transition: border-color 0.15s;
+}
+.net-proxy-card:hover { border-color: rgba(0, 0, 0, 0.12); }
+.net-proxy-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.net-proxy-addr {
+  font-size: 12px;
+  color: var(--text2);
+  margin-top: 2px;
+}
+.net-proxy-stats {
+  font-size: 11px;
+  color: var(--text2);
+  margin-top: 2px;
+}
+.net-proxy-del {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--red);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+.net-proxy-card:hover .net-proxy-del { opacity: 1; }
+.net-proxy-del:hover { background: rgba(255, 59, 48, 0.08); }
+
+/* Add proxy form */
+.net-add-form {
+  display: none;
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.02);
+  border: 0.5px solid rgba(0, 113, 227, 0.2);
+  margin-top: 8px;
+}
+.net-add-form.show { display: block; }
+.net-add-form .form-grid { grid-template-columns: 1fr 1fr; }
+.net-add-form .form-item input { padding: 8px 12px; font-size: 13px; }
+.net-add-form-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+/* Actions bar */
+.net-actions {
+  padding: 10px 16px;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+/* Separator */
+.net-sep {
+  height: 0.5px;
+  background: rgba(0, 0, 0, 0.06);
+  margin: 0 16px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .net-detail-card { width: calc(100% - 32px); max-height: 50%; bottom: 8px; right: 8px; left: 8px; }
+}

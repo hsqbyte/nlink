@@ -1,0 +1,19 @@
+# 测试用 - 连接节点 B
+node:
+  name: "node-b"
+  token: "my-secret-token"
+  dashboard:
+    enabled: true
+    port: 18081
+
+peers:
+  - addr: "127.0.0.1"
+    port: 7000
+    token: "my-secret-token"
+    pool_count: 2
+    proxies:
+      - name: "test-proxy"
+        type: "tcp"
+        local_ip: "127.0.0.1"
+        local_port: 8080
+        remote_port: 9080

@@ -1,0 +1,9 @@
+@media (max-width: 640px) {
+  .cards { grid-template-columns: repeat(2, 1fr); }
+  .form-grid { grid-template-columns: 1fr; }
+  table { font-size: 13px; }
+  td, th { padding: 8px 8px; }
+  .modal-box { padding: 20px; width: 95%; }
+  .topo-panel { width: 100%; }
+  .topo-toolbar-hint { display: none; }
+}

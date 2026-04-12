@@ -1,0 +1,83 @@
+version: '3'
+
+vars:
+  APP_NAME: nlink
+
+tasks:
+  default:
+    desc: 显示所有可用任务
+    cmds:
+      - task --list
+
+  dev:
+    desc: 启动开发服务器
+    cmds:
+      - go run . -c config/nlink.yaml
+
+  build:
+    desc: 构建 nlink
+    cmds:
+      - go build -o bin/nlink .
+
+  clean:
+    desc: 清理构建产物
+    cmds:
+      - rm -rf bin/
+      - go clean
+
+  fmt:
+    desc: 格式化代码
+    cmds:
+      - go fmt ./...
+
+  tidy:
+    desc: 整理依赖
+    cmds:
+      - go mod tidy
+
+  vet:
+    desc: 代码检查
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: 运行所有测试
+    cmds:
+      - go test -v ./...
+
+  release:
+    desc: 构建发布版本
+    cmds:
+      - task: clean
+      - task: fmt
+      - task: tidy
+      - task: vet
+      - task: build
+
+  docker-build:
+    desc: 构建 Docker 镜像
+    vars:
+      TAG: '{{.TAG | default "latest"}}'
+    cmds:
+      - docker build -t {{.APP_NAME}}:{{.TAG}} -f deploy/docker/Dockerfile .
+
+  docker-up:
+    desc: 启动 Docker 服务
+    cmds:
+      - docker compose -f deploy/docker/docker-compose.yml up -d
+
+  docker-down:
+    desc: 停止 Docker 服务
+    cmds:
+      - docker compose -f deploy/docker/docker-compose.yml down
+
+  docker-logs:
+    desc: 查看 Docker 日志
+    cmds:
+      - docker compose -f deploy/docker/docker-compose.yml logs -f app
+
+  deploy:
+    desc: 构建镜像并启动服务
+    cmds:
+      - task: docker-build
+      - task: docker-up

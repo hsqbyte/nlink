@@ -1,0 +1,69 @@
+/* Toast Stack */
+.toast-stack {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  z-index: 1000; pointer-events: none;
+}
+.toast-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px 10px 12px; border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 500;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  animation: toastIn .3s ease; pointer-events: auto;
+  white-space: nowrap; max-width: 90vw;
+}
+.toast-item.out { animation: toastOut .25s ease forwards; }
+.toast-item.ok { background: rgba(52, 199, 89, 0.92); color: #fff; }
+.toast-item.err { background: rgba(255, 59, 48, 0.92); color: #fff; }
+.toast-item.warn { background: rgba(255, 149, 0, 0.92); color: #fff; }
+.toast-icon { font-size: 16px; flex-shrink: 0; }
+.toast-close { margin-left: 8px; cursor: pointer; opacity: .7; font-size: 16px; line-height: 1; flex-shrink: 0; }
+.toast-close:hover { opacity: 1; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+
+/* Modal Overlay */
+.modal-mask {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  z-index: 500; display: none; align-items: center; justify-content: center;
+  animation: fadeIn .2s ease;
+}
+.modal-mask.show { display: flex; }
+.modal-box {
+  background: #fff; border-radius: var(--radius); padding: 28px;
+  width: 90%; max-width: 560px; max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16); animation: modalIn .25s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.modal-header h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.2px; }
+.modal-close {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.06); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: var(--text2); transition: background .15s;
+}
+.modal-close:hover { background: rgba(0, 0, 0, 0.1); }
+
+/* Confirm Dialog */
+.confirm-mask {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  z-index: 600; display: none; align-items: center; justify-content: center;
+}
+.confirm-mask.show { display: flex; }
+.confirm-box {
+  background: #fff; border-radius: var(--radius); padding: 24px;
+  width: 90%; max-width: 380px; text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18); animation: modalIn .2s ease;
+}
+.confirm-icon { font-size: 36px; margin-bottom: 12px; }
+.confirm-title { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+.confirm-desc { font-size: 14px; color: var(--text2); margin-bottom: 20px; line-height: 1.5; }
+.confirm-actions { display: flex; gap: 8px; justify-content: center; }
+.confirm-actions .btn { padding: 8px 20px; font-size: 14px; }

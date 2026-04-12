@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NLink</title>
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/css/components.css">
+<link rel="stylesheet" href="/static/css/overlay.css">
+<link rel="stylesheet" href="/static/css/network.css">
+<link rel="stylesheet" href="/static/css/responsive.css">
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+</head>
+<body>
+<div class="nav">
+  <h1><span>NLink</span></h1>
+  <div class="nav-r">
+    <span class="dot"></span>运行中 · <span id="nav-uptime">0s</span>
+    <div class="refresh-bar" onclick="manualRefresh()" title="点击立即刷新">
+      <div class="refresh-ring"><svg viewBox="0 0 20 20"><circle class="bg" cx="10" cy="10" r="8"/><circle class="fg" id="refresh-arc" cx="10" cy="10" r="8" stroke-dasharray="50.265" stroke-dashoffset="0"/></svg></div>
+      <span class="refresh-text" id="refresh-countdown">5</span>
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('overview')">概览</button>
+  <button class="tab" onclick="switchTab('proxies')">代理</button>
+  <button class="tab" onclick="switchTab('clients')">网络</button>
+  <button class="tab" onclick="switchTab('settings')">设置</button>
+</div>
+
+<div class="container">
+  <!-- 概览 -->
+  <div id="overview" class="panel active">
+    <div class="cards">
+      <div class="card"><div class="label">运行时间</div><div class="val" id="s-uptime">-</div></div>
+      <div class="card"><div class="label">在线节点</div><div class="val blue" id="s-clients">0</div></div>
+      <div class="card"><div class="label">活跃代理</div><div class="val blue" id="s-proxies">0</div></div>
+      <div class="card"><div class="label">活跃连接</div><div class="val" id="s-active">0</div><div class="sub" id="s-total">共 0 次</div></div>
+      <div class="card"><div class="label">下行流量</div><div class="val" id="s-in">0 B</div></div>
+      <div class="card"><div class="label">上行流量</div><div class="val" id="s-out">0 B</div></div>
+    </div>
+    <div class="glass">
+      <h2>代理统计</h2>
+      <div id="overview-table"><div class="empty">暂无代理</div></div>
+    </div>
+  </div>
+
+  <!-- 代理管理 -->
+  <div id="proxies" class="panel">
+    <div class="glass">
+      <h2>代理管理</h2>
+      <div id="proxy-mgmt"><div class="empty">暂无代理</div></div>
+    </div>
+  </div>
+
+  <!-- 网络 -->
+  <div id="clients" class="panel">
+    <div class="net-layout">
+      <div class="net-graph-toolbar">
+        <span>网络拓扑</span>
+        <button class="btn btn-ghost" onclick="refreshNetwork()"><span class="btn-text">刷新</span></button>
+      </div>
+      <div class="net-graph" id="net-graph"></div>
+      <div class="net-detail-card" id="net-detail"></div>
+    </div>
+  </div>
+
+  <!-- 设置 -->
+  <div id="settings" class="panel">
+    <div class="glass">
+      <h2>服务器配置</h2>
+      <div class="form-grid">
+        <div class="form-item"><label>Token</label><input id="cfg-token" type="text"></div>
+        <div class="form-item"><label>心跳超时 (秒)</label><input id="cfg-heartbeat" type="number"></div>
+        <div class="form-item"><label>每节点最大代理数</label><input id="cfg-max-proxies" type="number"></div>
+        <div class="form-item"><label>工作连接超时 (秒)</label><input id="cfg-work-timeout" type="number"></div>
+        <div class="form-item"><label>全局连接池大小</label><input id="cfg-pool-count" type="number" min="0" placeholder="0=禁用"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="loadConfig()"><span class="btn-text">重置</span></button>
+        <button class="btn btn-blue" onclick="saveConfig()"><span class="spinner"></span><span class="btn-text">保存</span></button>
+      </div>
+      <div style="margin-top:20px">
+        <h2>服务器信息</h2>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-item"><label>HTTP API 端口</label><input id="cfg-port" type="number" disabled></div>
+          <div class="form-item"><label>TCP 控制端口</label><input id="cfg-tcp-port" type="number" disabled></div>
+          <div class="form-item"><label>最大消息大小</label><input id="cfg-msg-size" type="number" disabled></div>
+          <div class="form-item"><label>优雅关闭超时</label><input id="cfg-shutdown" type="number" disabled></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 确认弹窗 -->
+<div class="confirm-mask" id="confirm-dialog">
+  <div class="confirm-box">
+    <div class="confirm-icon" id="confirm-icon">⚠️</div>
+    <div class="confirm-title" id="confirm-title"></div>
+    <div class="confirm-desc" id="confirm-desc"></div>
+    <div class="confirm-actions">
+      <button class="btn btn-ghost" onclick="confirmResolve(false)"><span class="btn-text">取消</span></button>
+      <button class="btn btn-red" id="confirm-ok-btn" onclick="confirmResolve(true)"><span class="btn-text">确定</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="/static/js/utils.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/refresh.js"></script>
+<script src="/static/js/config.js"></script>
+<script src="/static/js/network.js"></script>
+<script src="/static/js/main.js"></script>
+</body>
+</html>

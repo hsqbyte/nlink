@@ -1,0 +1,64 @@
+# 编译后的二进制文件
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 测试二进制文件已删除
+
+# 输出目录
+/out/
+/bin/
+/dist/
+/release/
+
+# Go工作空间文件
+go.work
+go.work.sum
+
+# 依赖文件(可选，有些项目会提交go.sum)
+# go.sum
+
+# IDE和编辑器文件
+
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统生成的文件
+.DS_Store
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 日志文件
+*.log
+
+# 环境变量文件
+.env
+.env.local
+.env.development.local
+.env.production.local
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+*.temp
+
+# 调试文件
+__debug_*
+main 
+bin/
+data/
+
+# 上传文件目录
+uploads/
+
+.vscodenlink
+/nlink

@@ -1,0 +1,42 @@
+# NLink 节点配置
+# 每个实例都是一个"节点"
+# node.listen 配置后可接受其他节点连接
+# peers 配置后可主动连接其他节点
+# 两者都配置则为中继节点
+
+node:
+  name: "node-a"                    # 节点名称（唯一标识）
+  token: "my-secret-token"          # 认证令牌
+
+  # 监听配置（可选，不配则不接受连接）
+  listen:
+    port: 7000                      # TCP 控制通道端口 (工作连接端口 = port+1)
+    max_message_size: 65536         # 最大消息大小
+    heartbeat_timeout: 90           # 心跳超时(秒)
+    max_proxies_per_peer: 10        # 每对端最大代理数
+    work_conn_timeout: 10           # 工作连接超时(秒)
+    pool_count: 5                   # 全局连接池大小(0=禁用)
+
+  # 管理面板（可选）
+  dashboard:
+    enabled: true                   # 是否启用 (默认 true, 设为 false 可禁用)
+    port: 18080                     # HTTP 管理端口
+    shutdown_timeout: 30            # 优雅关闭超时(秒)
+
+# 对端节点（可选，不配则不主动连接）
+# peers:
+#   - addr: "192.168.1.100"
+#     port: 7000
+#     token: "my-secret-token"
+#     pool_count: 5
+#     proxies:
+#       - name: "web"
+#         type: "tcp"
+#         local_ip: "127.0.0.1"
+#         local_port: 8080
+#         remote_port: 9080
+#       - name: "ssh"
+#         type: "tcp"
+#         local_ip: "127.0.0.1"
+#         local_port: 22
+#         remote_port: 9022
