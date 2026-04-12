@@ -62,9 +62,17 @@ func main() {
 		addr := fmt.Sprintf(":%d", cfg.Node.Dashboard.Port)
 		standaloneHTTP = &http.Server{Addr: addr, Handler: router.Engine}
 		go func() {
-			logger.Info("启动独立管理面板: http://localhost%s", addr)
-			if err := standaloneHTTP.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Error("HTTP服务器异常退出: %v", err)
+			dc := cfg.Node.Dashboard
+			if dc.TLSEnabled() {
+				logger.Info("启动独立管理面板: https://localhost%s", addr)
+				if err := standaloneHTTP.ListenAndServeTLS(dc.TLSCertFile, dc.TLSKeyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					logger.Error("HTTPS服务器异常退出: %v", err)
+				}
+			} else {
+				logger.Info("启动独立管理面板: http://localhost%s", addr)
+				if err := standaloneHTTP.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					logger.Error("HTTP服务器异常退出: %v", err)
+				}
 			}
 		}()
 	}

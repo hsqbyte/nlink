@@ -79,15 +79,21 @@ func (s *Server) Start() error {
 	fmt.Printf("  NLink 节点 [%s] 已启动:\n", cfg.Node.Name)
 	fmt.Printf("  控制通道:      tcp://localhost:%d\n", lc.Port)
 	fmt.Printf("  工作连接:      tcp://localhost:%d\n", lc.Port+1)
-	if s.HTTP != nil {
-		fmt.Printf("  管理面板:      http://localhost%s\n", s.HTTP.Addr)
-	}
 	fmt.Println("================================")
 
 	// 启动HTTP（如果有）
 	if s.HTTP != nil {
+		dc := cfg.Node.Dashboard
 		go func() {
-			if err := s.HTTP.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			var err error
+			if dc.TLSEnabled() {
+				fmt.Printf("  管理面板:      https://localhost%s\n", s.HTTP.Addr)
+				err = s.HTTP.ListenAndServeTLS(dc.TLSCertFile, dc.TLSKeyFile)
+			} else {
+				fmt.Printf("  管理面板:      http://localhost%s\n", s.HTTP.Addr)
+				err = s.HTTP.ListenAndServe()
+			}
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				logger.Error("HTTP服务器异常退出: %v", err)
 			}
 		}()

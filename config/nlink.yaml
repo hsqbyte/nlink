@@ -24,6 +24,8 @@ node:
     shutdown_timeout: 30            # 优雅关闭超时(秒)
     username: "admin"               # 登录用户名 (留空则不启用认证)
     password: "admin"               # 登录密码
+    # tls_cert_file: "/path/to/cert.pem"  # TLS 证书文件 (配置后启用 HTTPS)
+    # tls_key_file: "/path/to/key.pem"    # TLS 私钥文件
 
 # 对端节点（可选，不配则不主动连接）
 # peers:

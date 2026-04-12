@@ -71,7 +71,8 @@ func HandleLogin(c *gin.Context) {
 	token := generateSessionToken()
 	addSession(token)
 
-	c.SetCookie("nlink_token", token, 86400, "/", "", false, true)
+	secure := cfg.TLSEnabled()
+	c.SetCookie("nlink_token", token, 86400, "/", "", secure, true)
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "登录成功"})
 }
 

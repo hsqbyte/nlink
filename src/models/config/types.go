@@ -25,6 +25,8 @@ type DashboardConfig struct {
 	ShutdownTimeout int    `yaml:"shutdown_timeout"` // 优雅关闭超时(秒)
 	Username        string `yaml:"username"`         // 登录用户名 (留空则不启用认证)
 	Password        string `yaml:"password"`         // 登录密码
+	TLSCertFile     string `yaml:"tls_cert_file"`    // TLS 证书文件 (留空则 HTTP)
+	TLSKeyFile      string `yaml:"tls_key_file"`     // TLS 私钥文件
 }
 
 // IsEnabled 返回面板是否启用
@@ -44,6 +46,14 @@ func (d *DashboardConfig) AuthRequired() bool {
 		return false
 	}
 	return d.Username != "" && d.Password != ""
+}
+
+// TLSEnabled 返回是否启用 HTTPS
+func (d *DashboardConfig) TLSEnabled() bool {
+	if d == nil {
+		return false
+	}
+	return d.TLSCertFile != "" && d.TLSKeyFile != ""
 }
 
 // PeerConfig 对端节点配置

@@ -129,6 +129,8 @@ node:
     shutdown_timeout: 30            #   Graceful shutdown timeout (seconds)
     username: "admin"               #   Login username (empty = no auth)
     password: "admin"               #   Login password
+    tls_cert_file: "/path/cert.pem" #   TLS certificate (enables HTTPS)
+    tls_key_file: "/path/key.pem"   #   TLS private key
 
 peers:                              # Optional — nodes to actively connect to
   - addr: "192.168.1.100"

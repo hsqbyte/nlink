@@ -7,6 +7,8 @@ node:
     port: 18081
     username: "admin"
     password: "admin"
+    # tls_cert_file: "/path/to/cert.pem"
+    # tls_key_file: "/path/to/key.pem"
 
 peers:
   - addr: "127.0.0.1"
