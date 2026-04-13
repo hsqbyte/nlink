@@ -44,6 +44,7 @@ func init() {
 	router.TCPRouter.Handle("update_pool", peerResponseHandler)
 	router.TCPRouter.Handle("get_clients", peerResponseHandler)
 	router.TCPRouter.Handle("forward_cmd", peerResponseHandler)
+	router.TCPRouter.Handle("ping_latency", peerResponseHandler)
 }
 
 // handleAuth 认证处理

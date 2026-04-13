@@ -32,6 +32,9 @@ type TunnelService struct {
 	// 已断开的对端（保留供 Dashboard 显示）
 	disconnectedPeers map[string]*DisconnectedPeer // key: peerName
 
+	// 对端延迟 (ms)
+	peerLatencies map[string]int64 // connID -> latency ms
+
 	// 上游连接（本节点主动连接的对端）
 	upstreamMu    sync.RWMutex
 	upstreamPeers map[string]*UpstreamPeer // key: addr:port
@@ -57,12 +60,14 @@ func InitTunnelService(tcpServer *tcp.Server, workConnTimeout int) {
 		nameToConnID:      make(map[string]string),
 		peerPools:         make(map[string]chan net.Conn),
 		disconnectedPeers: make(map[string]*DisconnectedPeer),
+		peerLatencies:     make(map[string]int64),
 		upstreamPeers:     make(map[string]*UpstreamPeer),
 		tcpServer:         tcpServer,
 		workConnTimeout:   time.Duration(workConnTimeout) * time.Second,
 		startTime:         time.Now(),
 		pendingRequests:   make(map[string]chan *tcp.Response),
 	}
+	tunnelSvc.StartLatencyProbe()
 }
 
 // GetTunnelService 获取隧道服务单例
@@ -82,6 +87,7 @@ func EnsureTunnelService() {
 		nameToConnID:      make(map[string]string),
 		peerPools:         make(map[string]chan net.Conn),
 		disconnectedPeers: make(map[string]*DisconnectedPeer),
+		peerLatencies:     make(map[string]int64),
 		upstreamPeers:     make(map[string]*UpstreamPeer),
 		startTime:         time.Now(),
 		pendingRequests:   make(map[string]chan *tcp.Response),
@@ -256,6 +262,9 @@ func (ts *TunnelService) RemovePeerProxies(connID string) {
 			}
 		}()
 	}
+
+	// 清理延迟记录
+	delete(ts.peerLatencies, connID)
 }
 
 // ListProxies 列出所有代理（含统计）
@@ -387,6 +396,7 @@ func (ts *TunnelService) ListPeers() []PeerInfo {
 			Name:      ts.peerNames[connID],
 			Proxies:   names,
 			Connected: true,
+			Latency:   ts.peerLatencies[connID],
 		})
 	}
 	for _, dp := range ts.disconnectedPeers {
@@ -399,12 +409,20 @@ func (ts *TunnelService) ListPeers() []PeerInfo {
 	return result
 }
 
+// UpdatePeerLatency 更新下游对端延迟
+func (ts *TunnelService) UpdatePeerLatency(connID string, latencyMs int64) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.peerLatencies[connID] = latencyMs
+}
+
 // PeerInfo 对端信息
 type PeerInfo struct {
 	ConnID    string   `json:"conn_id"`
 	Name      string   `json:"name"`
 	Proxies   []string `json:"proxies"`
 	Connected bool     `json:"connected"`
+	Latency   int64    `json:"latency"` // 延迟(ms)，0=未检测
 }
 
 // DisconnectedPeer 已断开的对端记录
@@ -422,6 +440,7 @@ type UpstreamPeer struct {
 	Name      string   `json:"name"`
 	Connected bool     `json:"connected"`
 	Proxies   []string `json:"proxies"`
+	Latency   int64    `json:"latency"` // 延迟(ms)
 }
 
 // RegisterUpstreamPeer 注册上游连接
@@ -444,6 +463,16 @@ func (ts *TunnelService) UpdateUpstreamPeerStatus(addr string, port int, connect
 	}
 }
 
+// UpdateUpstreamPeerLatency 更新上游连接延迟
+func (ts *TunnelService) UpdateUpstreamPeerLatency(addr string, port int, latencyMs int64) {
+	ts.upstreamMu.Lock()
+	defer ts.upstreamMu.Unlock()
+	key := fmt.Sprintf("%s:%d", addr, port)
+	if p, ok := ts.upstreamPeers[key]; ok {
+		p.Latency = latencyMs
+	}
+}
+
 // ListUpstreamPeers 列出所有上游连接
 func (ts *TunnelService) ListUpstreamPeers() []UpstreamPeer {
 	ts.upstreamMu.RLock()
@@ -453,6 +482,40 @@ func (ts *TunnelService) ListUpstreamPeers() []UpstreamPeer {
 		result = append(result, *p)
 	}
 	return result
+}
+
+// StartLatencyProbe 启动周期性延迟检测（服务端→下游对端）
+func (ts *TunnelService) StartLatencyProbe() {
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ts.probeAllPeers()
+		}
+	}()
+}
+
+func (ts *TunnelService) probeAllPeers() {
+	ts.mu.RLock()
+	connIDs := make([]string, 0, len(ts.peerProxies))
+	for connID := range ts.peerProxies {
+		connIDs = append(connIDs, connID)
+	}
+	ts.mu.RUnlock()
+
+	for _, connID := range connIDs {
+		go func(cid string) {
+			start := time.Now()
+			resp, err := ts.SendCommandToPeer(cid, "ping_latency", nil)
+			if err != nil {
+				return
+			}
+			if resp.Code == 200 {
+				latency := time.Since(start).Milliseconds()
+				ts.UpdatePeerLatency(cid, latency)
+			}
+		}(connID)
+	}
 }
 
 // ---- 远程管理对端 ----

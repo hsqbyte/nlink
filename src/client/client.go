@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hsqbyte/nlink/src/core/tcp"
@@ -31,7 +32,8 @@ type Client struct {
 	authenticated bool        // 是否曾认证成功
 	poolCount     int         // 全局预建连接数
 	connID        string      // 对端分配的连接ID
-	crypto        *tcp.Crypto // 控制通道加密
+	crypto        *tcp.Crypto  // 控制通道加密
+	pingStart     atomic.Int64 // 心跳发送时间 (UnixMilli)
 }
 
 func Run(nodeName string, cfg *modelConfig.PeerConfig) error {
@@ -294,6 +296,7 @@ func (c *Client) heartbeat() {
 			return
 		case <-ticker.C:
 			c.mu.Lock()
+			c.pingStart.Store(time.Now().UnixMilli())
 			err := c.sendMsgLocked("ping", nil)
 			c.mu.Unlock()
 			if err != nil {
@@ -313,7 +316,16 @@ func (c *Client) readLoop() error {
 
 		switch msg.Cmd {
 		case "pong":
-			// 忽略
+			// 计算心跳延迟
+			if c.pingStart.Load() > 0 {
+				latency := time.Now().UnixMilli() - c.pingStart.Load()
+				c.pingStart.Store(0)
+				if ts := services.GetTunnelService(); ts != nil {
+					ts.UpdateUpstreamPeerLatency(c.cfg.Addr, c.cfg.Port, latency)
+				}
+			}
+		case "ping_latency":
+			c.replyCmd(msg.Seq, "ping_latency", 200, "pong", nil)
 		case "start_work_conn":
 			var data tcp.StartWorkConnData
 			raw, _ := json.Marshal(msg.Data)

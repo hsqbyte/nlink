@@ -55,7 +55,9 @@ async function initNetwork() {
         color: u.connected ? NET_COLORS.upstream : NET_COLORS.upstreamOff,
         font: { color: '#fff', size: 13 }
       });
-      const edgeLabel = (u.proxies || []).map(p => p).join(', ');
+      const proxyLabel = (u.proxies || []).map(p => p).join(', ');
+      const latencyLabel = u.latency > 0 ? u.latency + 'ms' : '';
+      const edgeLabel = [proxyLabel, latencyLabel].filter(Boolean).join(' · ');
       edges.push({
         from: 'self', to: uid, width: 2, arrows: { to: { enabled: true, scaleFactor: 0.6 } },
         color: { color: u.connected ? '#34C759' : '#FF3B30', highlight: '#34C759' },
@@ -64,7 +66,7 @@ async function initNetwork() {
         dashes: u.connected ? false : [5, 5]
       });
       netNodeData[uid] = {
-        type: 'upstream', info: { addr: u.addr, port: u.port, connected: u.connected, proxies_names: u.proxies || [] },
+        type: 'upstream', info: { addr: u.addr, port: u.port, connected: u.connected, proxies_names: u.proxies || [], latency: u.latency || 0 },
         proxies: [], gateway: null, path: [], label: label
       };
     });
@@ -80,8 +82,10 @@ async function initNetwork() {
         color: isConnected ? NET_COLORS.peer : NET_COLORS.peerOff,
         font: { color: '#fff', size: 13 }
       });
-      // Edge label shows proxy ports
-      const edgeLabel = netEdgeLabel(selfProxies, pid);
+      // Edge label shows proxy ports + latency
+      const proxyLabel = netEdgeLabel(selfProxies, pid);
+      const latencyLabel = c.latency > 0 ? c.latency + 'ms' : '';
+      const edgeLabel = [proxyLabel, latencyLabel].filter(Boolean).join(' · ');
       edges.push({
         from: 'self', to: pid, width: 2,
         color: { color: isConnected ? '#34C759' : '#FF3B30', highlight: '#0071E3' },
@@ -90,7 +94,7 @@ async function initNetwork() {
         dashes: isConnected ? false : [5, 5]
       });
       netNodeData[pid] = {
-        type: 'peer', info: { proxies_names: proxyNames, connected: isConnected }, proxies: [],
+        type: 'peer', info: { proxies_names: proxyNames, connected: isConnected, latency: c.latency || 0 }, proxies: [],
         gateway: null, path: [], label: label
       };
     });
@@ -308,6 +312,7 @@ function renderUpstreamDetail(id, nd) {
   h += '<div class="net-info-grid">';
   h += netInfoItem('地址', i.addr + ':' + i.port);
   h += netInfoItem('状态', i.connected ? '已连接' : '已断开');
+  h += netInfoItem('延迟', i.latency > 0 ? i.latency + 'ms' : '-');
   h += netInfoItem('代理数', (i.proxies_names || []).length);
   h += '</div>';
   if (i.proxies_names && i.proxies_names.length) {
@@ -335,6 +340,7 @@ function renderPeerDetail(id, nd) {
   h += netInfoItem('节点名称', id);
   if (i.peer_addr) h += netInfoItem('上游地址', i.peer_addr + ':' + i.peer_port);
   if (i.pool_count !== undefined) h += netInfoItem('连接池', i.pool_count);
+  h += netInfoItem('延迟', i.latency > 0 ? i.latency + 'ms' : '-');
   h += netInfoItem('代理数', nd.proxies ? nd.proxies.length : 0);
   h += '</div>';
   h += '<div class="net-sep"></div>';
