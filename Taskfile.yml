@@ -17,7 +17,7 @@ tasks:
   build:
     desc: 构建 nlink
     cmds:
-      - go build -o bin/nlink .
+      - go build -ldflags="-s -w -X main.Version={{.VERSION | default \"dev\"}}" -o bin/nlink .
 
   clean:
     desc: 清理构建产物

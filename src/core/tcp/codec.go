@@ -128,6 +128,8 @@ func (c *Codec) EncodeMessage(msg *Message) ([]byte, error) {
 }
 
 // EncodeMessage 包级别函数：编码 Message 为 [4字节长度头 + JSON]
+// 注意: 此函数不经过加密层，仅用于工作连接（port+1）注册消息。
+// 控制通道消息请使用 Codec.EncodeMessage 方法。
 func EncodeMessage(msg *Message) []byte {
 	payload, _ := json.Marshal(msg)
 	buf := make([]byte, headerLen+len(payload))

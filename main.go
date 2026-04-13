@@ -19,11 +19,19 @@ import (
 	"github.com/hsqbyte/nlink/src/services"
 )
 
+var Version = "dev"
+
 func main() {
 	cfgFile := flag.String("c", "config/nlink.yaml", "配置文件路径")
 	dashboard := flag.Bool("dashboard", false, "强制启动管理面板 (默认端口 18080)")
 	dashboardPort := flag.Int("dashboard-port", 0, "管理面板端口 (配合 -dashboard 使用)")
+	showVersion := flag.Bool("v", false, "显示版本号")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("nlink", Version)
+		os.Exit(0)
+	}
 
 	if err := config.InitConfig(*cfgFile); err != nil {
 		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)

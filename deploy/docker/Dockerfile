@@ -8,23 +8,26 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /app/server main.go
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /app/nlink main.go
 
 # ---
 
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata && \
+    adduser -D -u 1000 nlink
 ENV TZ=Asia/Shanghai
 
 WORKDIR /app
 
-COPY --from=builder /app/server .
+COPY --from=builder /app/nlink .
 COPY config/ ./config/
-COPY docs/db/ ./docs/db/
-COPY docs/swagger/ ./docs/swagger/
-COPY templates/ ./templates/
 
-EXPOSE 18081
+USER nlink
 
-CMD ["./server"]
+EXPOSE 7000 7001 18080
+
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:18080/health || exit 1
+
+CMD ["./nlink", "-c", "config/nlink.yaml"]

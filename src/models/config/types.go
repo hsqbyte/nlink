@@ -6,6 +6,7 @@ type NodeConfig struct {
 	Token     string           `yaml:"token"`     // 认证令牌
 	Listen    *ListenConfig    `yaml:"listen"`    // 监听配置（可选）
 	Dashboard *DashboardConfig `yaml:"dashboard"` // 管理面板配置（可选）
+	Vnet      *VnetConfig      `yaml:"vnet"`      // 虚拟组网配置（可选）
 }
 
 // ListenConfig 监听配置
@@ -72,4 +73,11 @@ type ProxyConfig struct {
 	LocalIP    string `yaml:"local_ip"`
 	LocalPort  int    `yaml:"local_port"`
 	RemotePort int    `yaml:"remote_port"`
+}
+
+// VnetConfig 虚拟组网配置
+type VnetConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	IP      string `yaml:"ip"`  // CIDR 格式, 如 "10.10.0.1/24"
+	MTU     int    `yaml:"mtu"` // 默认 1400
 }

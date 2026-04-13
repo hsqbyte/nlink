@@ -2,6 +2,7 @@ package handle
 
 import (
 	"crypto/subtle"
+	"fmt"
 
 	"github.com/hsqbyte/nlink/src/core/config"
 	"github.com/hsqbyte/nlink/src/core/tcp"
@@ -83,6 +84,19 @@ func handleNewProxy(ctx *tcp.Context) error {
 
 	if data.Name == "" || data.RemotePort <= 0 {
 		return ctx.Error(400, "缺少必要参数: name, remote_port")
+	}
+
+	// 检查每对端最大代理数限制
+	cfg := config.GlobalConfig
+	if cfg.Node.Listen != nil && cfg.Node.Listen.MaxProxiesPerPeer > 0 {
+		ts := services.GetTunnelService()
+		if ts.PeerProxyCount(ctx.ConnID) >= cfg.Node.Listen.MaxProxiesPerPeer {
+			return ctx.Reply(tcp.NewProxyResp{
+				Name:  data.Name,
+				OK:    false,
+				Error: fmt.Sprintf("已达最大代理数限制: %d", cfg.Node.Listen.MaxProxiesPerPeer),
+			})
+		}
 	}
 
 	ts := services.GetTunnelService()

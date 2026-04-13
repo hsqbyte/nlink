@@ -1,40 +1,17 @@
 services:
-  app:
+  nlink:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    container_name: fastgox-api
+    container_name: nlink
     restart: unless-stopped
     ports:
-      - "18081:18081"
-    environment:
-      - APP_ENV=prod
+      - "7000:7000"     # TCP 控制通道
+      - "7001:7001"     # 工作连接
+      - "18080:18080"   # Dashboard
     volumes:
-      - app-data:/app/data
-      - app-uploads:/app/uploads
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: fastgox-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: changeme
-      POSTGRES_DB: fastgox
-    ports:
-      - "5432:5432"
-    volumes:
-      - pg-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d fastgox"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+      - ./config:/app/config
+      - nlink-data:/app/data
 
 volumes:
-  pg-data:
-  app-data:
-  app-uploads:
+  nlink-data:

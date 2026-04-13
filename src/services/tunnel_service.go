@@ -123,6 +123,13 @@ func (ts *TunnelService) GetPeerName(connID string) string {
 	return ts.peerNames[connID]
 }
 
+// PeerProxyCount 返回指定对端已注册的代理数
+func (ts *TunnelService) PeerProxyCount(connID string) int {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return len(ts.peerProxies[connID])
+}
+
 // ---- 代理管理 ----
 
 // RegisterProxy 注册代理
