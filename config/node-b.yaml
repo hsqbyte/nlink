@@ -1,6 +1,6 @@
 # 测试用 - 连接节点 B
 node:
-  name: "node-b"
+  name: "hsq-macbook-client"
   token: "my-secret-token"
   dashboard:
     enabled: true
@@ -9,12 +9,19 @@ node:
     password: "admin"
     # tls_cert_file: "/path/to/cert.pem"
     # tls_key_file: "/path/to/key.pem"
+  vpn:
+    enabled: true
+    virtual_ip: "10.0.0.2/24"
+    listen_port: 7201
+    mtu: 1400
 
 peers:
-  - addr: "127.0.0.1"
-    port: 7000
+  - addr: "192.168.0.105"
+    port: 7100
     token: "my-secret-token"
     pool_count: 2
+    vpn_port: 7200
+    virtual_ip: "10.0.0.1"
     proxies:
       - name: "test-proxy"
         type: "tcp"

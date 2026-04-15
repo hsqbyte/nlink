@@ -13,6 +13,36 @@ async function loadConfig() {
   $('cfg-tcp-port').value = d.listen_port || '';
   $('cfg-msg-size').value = d.max_message_size || '';
   $('cfg-shutdown').value = d.shutdown_timeout || '';
+  renderConnConfig(d);
+}
+
+function renderConnConfig(d) {
+  const addr = window.location.hostname;
+  const port = d.listen_port || 7100;
+  const token = d.token || 'my-secret-token';
+  const pool = d.pool_count != null ? d.pool_count : 5;
+  const yaml = `peers:
+  - addr: "${addr}"
+    port: ${port}
+    token: "${token}"
+    pool_count: ${pool}
+    proxies:
+      - name: "example"
+        type: "tcp"
+        local_ip: "127.0.0.1"
+        local_port: 8080
+        remote_port: 9080`;
+  $('conn-config-preview').textContent = yaml;
+}
+
+async function copyConnConfig() {
+  const text = $('conn-config-preview').textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('已复制到剪贴板', true);
+  } catch (e) {
+    toast('复制失败', false);
+  }
 }
 
 async function saveConfig() {

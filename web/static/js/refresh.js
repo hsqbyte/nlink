@@ -41,6 +41,15 @@ async function refresh() {
     $('s-total').textContent = '共 ' + s.total_conns + ' 次';
     $('s-in').textContent = fmtB(s.bytes_in);
     $('s-out').textContent = fmtB(s.bytes_out);
+    // VPN 信息
+    const vpn = j.data.vpn;
+    if (vpn && vpn.enabled) {
+      $('vpn-card').style.display = '';
+      $('s-vpn-ip').textContent = vpn.virtual_ip;
+      $('s-vpn-port').textContent = 'UDP :' + vpn.listen_port;
+    } else {
+      $('vpn-card').style.display = 'none';
+    }
     renderOverviewTable(p);
     renderProxyMgmt(p);
   } catch (e) { console.error(e); }

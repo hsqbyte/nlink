@@ -104,16 +104,43 @@ func serverStatus(c *gin.Context) {
 // serverStats Dashboard 数据接口
 func serverStats(c *gin.Context) {
 	ts := services.GetTunnelService()
+	data := gin.H{
+		"node_name": config.GlobalConfig.Node.Name,
+		"server":    ts.ServerStats(),
+		"proxies":   ts.ListProxies(),
+		"peers":     ts.ListPeers(),
+		"upstream":  ts.ListUpstreamPeers(),
+	}
+	// VPN 信息
+	vpnCfg := config.GlobalConfig.Node.VPN
+	if vpnCfg != nil && vpnCfg.IsEnabled() {
+		data["vpn"] = gin.H{
+			"enabled":     true,
+			"virtual_ip":  vpnCfg.VirtualIP,
+			"listen_port": vpnCfg.ListenPort,
+			"mtu":         vpnCfg.MTU,
+		}
+	}
+	// 对端 VPN 信息（从配置中读取）
+	if len(config.GlobalConfig.Peers) > 0 {
+		peerVPN := make(map[string]gin.H)
+		for _, p := range config.GlobalConfig.Peers {
+			if p.VirtualIP != "" {
+				key := p.Addr
+				peerVPN[key] = gin.H{
+					"virtual_ip": p.VirtualIP,
+					"vpn_port":   p.VPNPort,
+				}
+			}
+		}
+		if len(peerVPN) > 0 {
+			data["peer_vpn"] = peerVPN
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",
-		"data": gin.H{
-			"node_name": config.GlobalConfig.Node.Name,
-			"server":    ts.ServerStats(),
-			"proxies":   ts.ListProxies(),
-			"peers":     ts.ListPeers(),
-			"upstream":  ts.ListUpstreamPeers(),
-		},
+		"data":    data,
 	})
 }
 

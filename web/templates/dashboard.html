@@ -41,6 +41,7 @@
       <div class="card"><div class="label">活跃连接</div><div class="val" id="s-active">0</div><div class="sub" id="s-total">共 0 次</div></div>
       <div class="card"><div class="label">下行流量</div><div class="val" id="s-in">0 B</div></div>
       <div class="card"><div class="label">上行流量</div><div class="val" id="s-out">0 B</div></div>
+      <div class="card" id="vpn-card" style="display:none"><div class="label">虚拟网络</div><div class="val blue" id="s-vpn-ip">-</div><div class="sub" id="s-vpn-port"></div></div>
     </div>
     <div class="glass">
       <h2>代理统计</h2>
@@ -91,6 +92,12 @@
           <div class="form-item"><label>最大消息大小</label><input id="cfg-msg-size" type="number" disabled></div>
           <div class="form-item"><label>优雅关闭超时</label><input id="cfg-shutdown" type="number" disabled></div>
         </div>
+      </div>
+      <div style="margin-top:20px">
+        <h2>连接配置</h2>
+        <p style="color:#888;font-size:13px;margin:8px 0 12px">复制以下配置片段，粘贴到其他节点的配置文件中即可连接本节点</p>
+        <pre id="conn-config-preview" style="background:#1a1a2e;color:#e0e0e0;padding:14px 16px;border-radius:8px;font-size:13px;line-height:1.6;overflow-x:auto;white-space:pre;margin:0 0 12px"></pre>
+        <button class="btn btn-blue" onclick="copyConnConfig()"><span class="btn-text">复制连接配置</span></button>
       </div>
     </div>
   </div>

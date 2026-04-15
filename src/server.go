@@ -25,7 +25,6 @@ type Server struct {
 
 // NewServer 创建新的服务器实例
 func NewServer() (*Server, error) {
-	logger.InitWithPath("data/logs")
 	logger.Info("创建节点服务实例..")
 
 	cfg := config.GlobalConfig

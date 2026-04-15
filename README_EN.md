@@ -4,12 +4,19 @@ English | [中文](README.md)
 
 Lightweight P2P TCP tunneling tool. Single binary, config-driven — every instance can accept connections, connect to other nodes, or both as a relay.
 
+## Screenshots
+
+| Overview | Network Topology |
+|----------|------------------|
+| ![Overview](doc/screenshot-overview.png) | ![Network Topology](doc/screenshot-network.png) |
+
 ## Features
 
 - **Peer-to-Peer Architecture** — No fixed "server/client"; each node's role is determined by config
 - **Single Binary** — One `nlink` for all scenarios
 - **TCP Port Forwarding** — Map any internal TCP service to a remote port
-- **Visual Dashboard** — Built-in web management panel with vis-network topology graph, real-time node/proxy status
+- **Virtual LAN (VPN)** — TUN + UDP encrypted tunnel for layer-2 networking; nodes can directly ping each other
+- **Visual Dashboard** — Built-in web management panel with vis-network topology graph, real-time node/proxy/VPN status
 - **Connection Pooling** — Pre-built work connections to reduce first-request latency
 - **Remote Management** — Manage peer node proxies and connection pools via Dashboard
 - **Multi-Level Tunneling** — Supports A → B → C chain forwarding with cross-level management
@@ -23,12 +30,17 @@ Lightweight P2P TCP tunneling tool. Single binary, config-driven — every insta
 User ──▶ :9080 ──▶ Node-A(listen) ══tunnel══▶ Node-B(peer) ──▶ 127.0.0.1:8080
 ```
 
+```
+VPN: Node-A (10.0.0.1) ◄──UDP encrypted──► Node-B (10.0.0.2)   ping each other
+```
+
 Each node can configure:
 
 | Config Block | Purpose |
 |-------------|---------|
 | `node.listen` | Accept connections from other nodes (TCP control + work channels) |
 | `node.dashboard` | Enable web management panel |
+| `node.vpn` | Enable virtual LAN (TUN + UDP encrypted tunnel) |
 | `peers` | Actively connect to other nodes and register proxies |
 
 ## Installation
@@ -59,6 +71,10 @@ node:
     pool_count: 5
   dashboard:
     port: 18080
+  vpn:
+    enabled: true
+    virtual_ip: "10.0.0.1/24"
+    listen_port: 7200
 ```
 
 ### Node B — Internal machine, connects to A
@@ -70,12 +86,18 @@ node:
   token: "your-secret"
   dashboard:
     port: 18081
+  vpn:
+    enabled: true
+    virtual_ip: "10.0.0.2/24"
+    listen_port: 7201
 
 peers:
   - addr: "x.x.x.x"
     port: 7000
     token: "your-secret"
     pool_count: 2
+    vpn_port: 7200
+    virtual_ip: "10.0.0.1"
     proxies:
       - name: "web"
         type: "tcp"
@@ -97,6 +119,20 @@ nlink -c config/node-b.yaml
 Visit `http://node-a:18080` or `http://node-b:18081` for the Dashboard.
 
 External users can reach node-b's `127.0.0.1:8080` via `node-a:9080`.
+
+### VPN Usage
+
+With VPN enabled on both nodes, they can ping each other directly:
+
+```bash
+# From Node B
+ping 10.0.0.1
+
+# From Node A
+ping 10.0.0.2
+```
+
+> **Note**: VPN requires root/admin privileges to create TUN devices. Run with `sudo` on Linux/macOS.
 
 ## CLI Options
 
@@ -132,11 +168,19 @@ node:
     tls_cert_file: "/path/cert.pem" #   TLS certificate (enables HTTPS)
     tls_key_file: "/path/key.pem"   #   TLS private key
 
+  vpn:                              # Optional — virtual LAN
+    enabled: true                   #   Enable/disable (default false)
+    virtual_ip: "10.0.0.1/24"      #   Virtual IP for this node (CIDR)
+    listen_port: 7200               #   UDP listen port
+    mtu: 1400                       #   MTU (default 1400)
+
 peers:                              # Optional — nodes to actively connect to
   - addr: "192.168.1.100"
     port: 7000
     token: "your-secret"
     pool_count: 5
+    vpn_port: 7200                  #   Peer VPN UDP port (optional)
+    virtual_ip: "10.0.0.1"         #   Peer virtual IP (optional)
     proxies:
       - name: "web"
         type: "tcp"

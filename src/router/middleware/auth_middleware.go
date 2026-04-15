@@ -27,7 +27,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		token, err := c.Cookie("nlink_token")
-		if err != nil || !isValidSession(token) {
+		if err != nil || !IsValidSession(token) {
 			path := c.Request.URL.Path
 			// API 请求返回 401
 			if len(path) > 4 && path[:5] == "/api/" {
@@ -95,7 +95,7 @@ func generateSessionToken() string {
 	return hex.EncodeToString(b)
 }
 
-func isValidSession(token string) bool {
+func IsValidSession(token string) bool {
 	sessionsMu.RLock()
 	defer sessionsMu.RUnlock()
 	return sessions[token]

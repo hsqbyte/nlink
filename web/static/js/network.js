@@ -34,30 +34,37 @@ async function initNetwork() {
 
     // Self node
     const selfProxies = j.data.proxies || [];
+    const vpn = j.data.vpn;
+    const selfLabel = vpn && vpn.enabled ? nodeName + '\n' + vpn.virtual_ip : nodeName;
     nodes.push({
-      id: 'self', label: nodeName, shape: 'circle', size: 40,
-      color: NET_COLORS.self, font: { color: '#fff', size: 14 }
+      id: 'self', label: selfLabel, shape: 'circle', size: 40,
+      color: NET_COLORS.self, font: { color: '#fff', size: 14, multi: true }
     });
     netNodeData['self'] = {
       type: 'server', info: {
         uptime: s.uptime, peer_count: s.peer_count, proxy_count: s.proxy_count,
-        active_conns: s.active_conns, total_conns: s.total_conns, bytes_in: s.bytes_in, bytes_out: s.bytes_out
+        active_conns: s.active_conns, total_conns: s.total_conns, bytes_in: s.bytes_in, bytes_out: s.bytes_out,
+        vpn: vpn || null
       },
       proxies: selfProxies, gateway: null, path: [], label: nodeName
     };
 
     // Upstream peers (nodes this instance connects to)
+    const peerVPN = j.data.peer_vpn || {};
     upstream.forEach(u => {
       const uid = 'upstream-' + u.addr + ':' + u.port;
       const label = u.name || (u.addr + ':' + u.port);
+      const uVPN = peerVPN[u.addr];
+      const nodeLabel = uVPN ? label + '\n' + uVPN.virtual_ip : label;
       nodes.push({
-        id: uid, label: label, shape: 'circle', size: 35,
+        id: uid, label: nodeLabel, shape: 'circle', size: 35,
         color: u.connected ? NET_COLORS.upstream : NET_COLORS.upstreamOff,
-        font: { color: '#fff', size: 13 }
+        font: { color: '#fff', size: 13, multi: true }
       });
       const proxyLabel = (u.proxies || []).map(p => p).join(', ');
       const latencyLabel = u.latency > 0 ? u.latency + 'ms' : '';
-      const edgeLabel = [proxyLabel, latencyLabel].filter(Boolean).join(' · ');
+      const vpnLabel = (vpn && vpn.enabled && uVPN) ? '🔒 VPN' : '';
+      const edgeLabel = [proxyLabel, latencyLabel, vpnLabel].filter(Boolean).join(' · ');
       edges.push({
         from: 'self', to: uid, width: 2, arrows: { to: { enabled: true, scaleFactor: 0.6 } },
         color: { color: u.connected ? '#34C759' : '#FF3B30', highlight: '#34C759' },
@@ -66,7 +73,7 @@ async function initNetwork() {
         dashes: u.connected ? false : [5, 5]
       });
       netNodeData[uid] = {
-        type: 'upstream', info: { addr: u.addr, port: u.port, connected: u.connected, proxies_names: u.proxies || [], latency: u.latency || 0 },
+        type: 'upstream', info: { addr: u.addr, port: u.port, connected: u.connected, proxies_names: u.proxies || [], latency: u.latency || 0, vpn: uVPN || null },
         proxies: [], gateway: null, path: [], label: label
       };
     });
@@ -294,8 +301,12 @@ function renderServerDetail(nd) {
     netInfoItem('活跃代理', i.proxy_count) +
     netInfoItem('活跃连接', i.active_conns) +
     netInfoItem('↓ 流量', fmtB(i.bytes_in)) +
-    netInfoItem('↑ 流量', fmtB(i.bytes_out)) +
-  '</div>';
+    netInfoItem('↑ 流量', fmtB(i.bytes_out));
+  if (i.vpn && i.vpn.enabled) {
+    h += netInfoItem('虚拟 IP', i.vpn.virtual_ip) +
+      netInfoItem('VPN 端口', 'UDP :' + i.vpn.listen_port);
+  }
+  h += '</div>';
   h += '<div class="net-sep"></div>';
   h += '<div class="net-section"><div class="net-section-header"><h3>代理列表 (' + (nd.proxies || []).length + ')</h3></div>';
   h += renderServerProxies(nd.proxies);
@@ -314,6 +325,10 @@ function renderUpstreamDetail(id, nd) {
   h += netInfoItem('状态', i.connected ? '已连接' : '已断开');
   h += netInfoItem('延迟', i.latency > 0 ? i.latency + 'ms' : '-');
   h += netInfoItem('代理数', (i.proxies_names || []).length);
+  if (i.vpn) {
+    h += netInfoItem('虚拟 IP', i.vpn.virtual_ip);
+    if (i.vpn.vpn_port) h += netInfoItem('VPN 端口', 'UDP :' + i.vpn.vpn_port);
+  }
   h += '</div>';
   if (i.proxies_names && i.proxies_names.length) {
     h += '<div class="net-sep"></div>';

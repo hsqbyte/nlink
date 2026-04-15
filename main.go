@@ -13,6 +13,7 @@ import (
 	"github.com/hsqbyte/nlink/src"
 	"github.com/hsqbyte/nlink/src/client"
 	"github.com/hsqbyte/nlink/src/core/config"
+	"github.com/hsqbyte/nlink/src/core/vpn"
 	modelConfig "github.com/hsqbyte/nlink/src/models/config"
 	"github.com/hsqbyte/nlink/src/router"
 	_ "github.com/hsqbyte/nlink/src/router/handle"
@@ -37,6 +38,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
 		os.Exit(1)
 	}
+
+	// 初始化日志（同时输出到控制台和文件）
+	logger.InitWithPath("data/logs")
 
 	cfg := config.GlobalConfig
 
@@ -100,11 +104,39 @@ func main() {
 		}()
 	}
 
+	// 启动 VPN 引擎（如果配置了 vpn）
+	var vpnEngine *vpn.Engine
+	if cfg.Node.VPN.IsEnabled() {
+		var err error
+		vpnEngine, err = vpn.NewEngine(cfg.Node.VPN, cfg.Node.Token)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "VPN 引擎启动失败: %v\n", err)
+			logger.Error("VPN 引擎启动失败: %v", err)
+		} else {
+			vpnEngine.Start()
+			fmt.Printf("  VPN 虚拟网络:   %s (UDP :%d)\n", cfg.Node.VPN.VirtualIP, cfg.Node.VPN.ListenPort)
+			// 添加对端 VPN 节点
+			for _, peer := range cfg.Peers {
+				if peer.VPNPort > 0 && peer.VirtualIP != "" {
+					endpoint := fmt.Sprintf("%s:%d", peer.Addr, peer.VPNPort)
+					if err := vpnEngine.AddPeer(peer.VirtualIP, endpoint); err != nil {
+						logger.Error("VPN 添加对端失败: %v", err)
+					} else {
+						fmt.Printf("  VPN 对端:       %s -> %s\n", peer.VirtualIP, endpoint)
+					}
+				}
+			}
+		}
+	}
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	logger.Info("正在关闭服务...")
+	if vpnEngine != nil {
+		vpnEngine.Stop()
+	}
 	if srv != nil {
 		if err := srv.Stop(); err != nil {
 			logger.Error("节点服务关闭失败: %v", err)

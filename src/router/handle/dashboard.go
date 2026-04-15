@@ -33,9 +33,9 @@ func loginPage(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
-	// 已登录则跳转 dashboard
+	// 已登录且 session 有效则跳转 dashboard
 	token, err := c.Cookie("nlink_token")
-	if err == nil && token != "" {
+	if err == nil && token != "" && middleware.IsValidSession(token) {
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
