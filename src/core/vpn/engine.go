@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/fastgox/utils/logger"
 	modelConfig "github.com/hsqbyte/nlink/src/models/config"
@@ -19,6 +20,19 @@ type Engine struct {
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
+}
+
+// 全局 VPN 引擎实例
+var globalEngine *Engine
+
+// SetGlobalEngine 设置全局 VPN 引擎
+func SetGlobalEngine(e *Engine) {
+	globalEngine = e
+}
+
+// GetGlobalEngine 获取全局 VPN 引擎
+func GetGlobalEngine() *Engine {
+	return globalEngine
 }
 
 // NewEngine 创建 VPN 引擎
@@ -95,6 +109,31 @@ func (e *Engine) AddPeer(virtualIP string, endpoint string) error {
 
 	e.transport.AddPeer(vip, addr)
 	return nil
+}
+
+// DiscoverPublicAddr 通过 STUN 探测本机公网地址
+func (e *Engine) DiscoverPublicAddr() (*STUNResult, error) {
+	return STUNDiscover(e.transport.Conn(), 3*time.Second)
+}
+
+// PunchPeer 尝试对指定对端进行 UDP 打洞
+func (e *Engine) PunchPeer(peerPublicAddr string, peerVirtualIP string) (*PunchResult, error) {
+	return HolePunch(e.transport, peerPublicAddr, peerVirtualIP)
+}
+
+// Transport 返回底层 UDP 传输层
+func (e *Engine) Transport() *UDPTransport {
+	return e.transport
+}
+
+// Config 返回 VPN 配置
+func (e *Engine) Config() *modelConfig.VPNConfig {
+	return e.config
+}
+
+// VirtualIP 返回本节点的虚拟 IP 字符串 (CIDR)
+func (e *Engine) VirtualIP() string {
+	return e.config.VirtualIP
 }
 
 // tunToUDP 从 TUN 读取 IP 包 → 加密 → UDP 发送到对端

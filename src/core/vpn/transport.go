@@ -131,6 +131,11 @@ func (t *UDPTransport) Close() error {
 	return t.conn.Close()
 }
 
+// Conn 返回底层 UDP 连接（用于 STUN 探测）
+func (t *UDPTransport) Conn() *net.UDPConn {
+	return t.conn
+}
+
 // encrypt 使用 AES-256-GCM 加密，返回 nonce + ciphertext
 func (t *UDPTransport) encrypt(plaintext []byte) ([]byte, error) {
 	nonce := make([]byte, t.aead.NonceSize())

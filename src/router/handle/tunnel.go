@@ -6,6 +6,7 @@ import (
 
 	"github.com/hsqbyte/nlink/src/core/config"
 	"github.com/hsqbyte/nlink/src/core/tcp"
+	"github.com/hsqbyte/nlink/src/core/vpn"
 	"github.com/hsqbyte/nlink/src/router"
 	"github.com/hsqbyte/nlink/src/services"
 )
@@ -45,6 +46,9 @@ func init() {
 	router.TCPRouter.Handle("get_clients", peerResponseHandler)
 	router.TCPRouter.Handle("forward_cmd", peerResponseHandler)
 	router.TCPRouter.Handle("ping_latency", peerResponseHandler)
+
+	// VPN 打洞信令
+	router.TCPRouter.Handle("vpn_endpoint", handleVPNEndpoint)
 }
 
 // handleAuth 认证处理
@@ -113,5 +117,40 @@ func handleNewProxy(ctx *tcp.Context) error {
 		Name:       data.Name,
 		RemotePort: data.RemotePort,
 		OK:         true,
+	})
+}
+
+// handleVPNEndpoint 处理客户端上报的 VPN 端点信息
+// 服务端收到后：1) 存储客户端端点 2) 回复自己的端点 3) 尝试打洞
+func handleVPNEndpoint(ctx *tcp.Context) error {
+	var data tcp.VPNEndpointData
+	if err := ctx.Bind(&data); err != nil {
+		return ctx.Error(400, "参数解析失败")
+	}
+
+	engine := vpn.GetGlobalEngine()
+	if engine == nil {
+		return ctx.Error(503, "本节点未启用 VPN")
+	}
+
+	// 用客户端上报的公网地址添加/更新对端
+	if data.VirtualIP != "" && data.PublicAddr != "" {
+		if err := engine.AddPeer(data.VirtualIP, data.PublicAddr); err != nil {
+			return ctx.Error(500, fmt.Sprintf("添加 VPN 对端失败: %v", err))
+		}
+	}
+
+	// 探测本节点公网地址
+	var myPublicAddr string
+	result, err := engine.DiscoverPublicAddr()
+	if err == nil && result.PublicAddr != nil {
+		myPublicAddr = result.PublicAddr.String()
+	}
+
+	// 回复本节点的 VPN 信息
+	return ctx.Reply(tcp.VPNEndpointData{
+		VirtualIP:  engine.VirtualIP(),
+		PublicAddr: myPublicAddr,
+		ListenPort: engine.Config().ListenPort,
 	})
 }

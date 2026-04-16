@@ -115,6 +115,7 @@ func main() {
 		} else {
 			vpnEngine.Start()
 			fmt.Printf("  VPN 虚拟网络:   %s (UDP :%d)\n", cfg.Node.VPN.VirtualIP, cfg.Node.VPN.ListenPort)
+			vpn.SetGlobalEngine(vpnEngine)
 			// 添加对端 VPN 节点
 			for _, peer := range cfg.Peers {
 				if peer.VPNPort > 0 && peer.VirtualIP != "" {

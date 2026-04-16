@@ -1,5 +1,4 @@
 package vpn
-package vpn
 
 import (
 	"fmt"

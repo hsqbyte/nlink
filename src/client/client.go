@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hsqbyte/nlink/src/core/tcp"
+	"github.com/hsqbyte/nlink/src/core/vpn"
 	modelConfig "github.com/hsqbyte/nlink/src/models/config"
 	"github.com/hsqbyte/nlink/src/services"
 )
@@ -128,6 +129,9 @@ func (c *Client) run() error {
 	if c.poolCount > 0 {
 		c.fillPool()
 	}
+
+	// VPN 打洞：交换端点信息并尝试建立直连
+	go c.vpnHolePunch()
 
 	go c.heartbeat()
 
@@ -307,6 +311,40 @@ func (c *Client) heartbeat() {
 	}
 }
 
+// vpnHolePunch VPN 打洞：探测公网地址 → 交换端点 → 尝试打洞
+func (c *Client) vpnHolePunch() {
+	engine := vpn.GetGlobalEngine()
+	if engine == nil {
+		return // VPN 未启用
+	}
+
+	// 等待一会儿让 VPN engine 完全启动
+	time.Sleep(2 * time.Second)
+
+	// STUN 探测本机公网地址
+	result, err := engine.DiscoverPublicAddr()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[Node:%s] VPN STUN 探测失败: %v (使用静态配置)\n", c.nodeName, err)
+		return
+	}
+	fmt.Printf("[Node:%s] VPN 公网地址: %s\n", c.nodeName, result.PublicAddr)
+
+	// 发送本机端点给服务端
+	c.mu.Lock()
+	err = c.sendMsgLocked("vpn_endpoint", tcp.VPNEndpointData{
+		VirtualIP:  engine.VirtualIP(),
+		PublicAddr: result.PublicAddr.String(),
+		ListenPort: engine.Config().ListenPort,
+	})
+	c.mu.Unlock()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[Node:%s] VPN 端点交换失败: %v\n", c.nodeName, err)
+		return
+	}
+
+	// 响应在 readLoop 中处理 (vpn_endpoint 命令)
+}
+
 func (c *Client) readLoop() error {
 	for {
 		msg, err := c.readMsg()
@@ -355,6 +393,8 @@ func (c *Client) readLoop() error {
 			raw, _ := json.Marshal(msg.Data)
 			json.Unmarshal(raw, &data)
 			go c.handleForwardCmd(msg.Seq, &data)
+		case "vpn_endpoint":
+			go c.handleVPNEndpointResp(msg)
 		default:
 			fmt.Printf("[Node:%s] 收到: cmd=%s\n", c.nodeName, msg.Cmd)
 		}
@@ -559,6 +599,58 @@ func (c *Client) handleForwardCmd(seq string, data *tcp.ForwardCmdData) {
 		}
 		raw, _ := json.Marshal(resp.Data)
 		c.replyCmd(seq, "forward_cmd", resp.Code, resp.Message, json.RawMessage(raw))
+	}
+}
+
+// handleVPNEndpointResp 处理服务端回复的 VPN 端点信息，尝试打洞
+func (c *Client) handleVPNEndpointResp(msg *tcp.Response) {
+	engine := vpn.GetGlobalEngine()
+	if engine == nil {
+		return
+	}
+
+	// 解析服务端的 VPN 端点
+	raw, _ := json.Marshal(msg.Data)
+	var resp struct {
+		VirtualIP  string `json:"virtual_ip"`
+		PublicAddr string `json:"public_addr"`
+		ListenPort int    `json:"listen_port"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		fmt.Fprintf(os.Stderr, "[Node:%s] VPN 端点解析失败: %v\n", c.nodeName, err)
+		return
+	}
+
+	if resp.VirtualIP == "" {
+		return
+	}
+
+	// 提取纯 IP（去掉 CIDR 后缀）
+	peerVIP := resp.VirtualIP
+	if ip, _, err := net.ParseCIDR(resp.VirtualIP); err == nil {
+		peerVIP = ip.String()
+	}
+
+	if resp.PublicAddr != "" {
+		// 有公网地址，尝试打洞
+		fmt.Printf("[Node:%s] VPN 打洞: 对端 %s 公网 %s\n", c.nodeName, peerVIP, resp.PublicAddr)
+		result, err := engine.PunchPeer(resp.PublicAddr, peerVIP)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[Node:%s] VPN 打洞失败: %v\n", c.nodeName, err)
+		} else if result.Success {
+			fmt.Printf("[Node:%s] VPN 打洞成功: %s -> %s\n", c.nodeName, peerVIP, result.PeerAddr)
+			return
+		}
+	}
+
+	// 打洞失败或无公网地址，回退到静态配置
+	if c.cfg.VPNPort > 0 && c.cfg.VirtualIP != "" {
+		endpoint := fmt.Sprintf("%s:%d", c.cfg.Addr, c.cfg.VPNPort)
+		if err := engine.AddPeer(c.cfg.VirtualIP, endpoint); err != nil {
+			fmt.Fprintf(os.Stderr, "[Node:%s] VPN 静态对端添加失败: %v\n", c.nodeName, err)
+		} else {
+			fmt.Printf("[Node:%s] VPN 回退静态配置: %s -> %s\n", c.nodeName, c.cfg.VirtualIP, endpoint)
+		}
 	}
 }
 

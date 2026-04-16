@@ -119,3 +119,20 @@ type DownstreamPeer struct {
 	Name    string   `json:"name"`
 	Proxies []string `json:"proxies"`
 }
+
+// ---- VPN 打洞信令 ----
+
+// VPNEndpointData VPN 端点信息（用于打洞信令交换）
+type VPNEndpointData struct {
+	VirtualIP  string `json:"virtual_ip"`  // 本机虚拟 IP
+	PublicAddr string `json:"public_addr"` // STUN 探测到的公网地址 (ip:port)
+	ListenPort int    `json:"listen_port"` // VPN UDP 监听端口
+}
+
+// VPNPunchData 打洞请求（携带对端信息）
+type VPNPunchData struct {
+	PeerName   string `json:"peer_name"`   // 目标节点名称
+	VirtualIP  string `json:"virtual_ip"`  // 请求端虚拟 IP
+	PublicAddr string `json:"public_addr"` // 请求端公网地址
+	ListenPort int    `json:"listen_port"` // 请求端 VPN UDP 端口
+}

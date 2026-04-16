@@ -16,6 +16,7 @@ Lightweight P2P TCP tunneling tool. Single binary, config-driven — every insta
 - **Single Binary** — One `nlink` for all scenarios
 - **TCP Port Forwarding** — Map any internal TCP service to a remote port
 - **Virtual LAN (VPN)** — TUN + UDP encrypted tunnel for layer-2 networking; nodes can directly ping each other
+- **UDP Hole Punching** — Automatic STUN discovery + NAT traversal for direct connections when both sides are behind NAT
 - **Visual Dashboard** — Built-in web management panel with vis-network topology graph, real-time node/proxy/VPN status
 - **Connection Pooling** — Pre-built work connections to reduce first-request latency
 - **Remote Management** — Manage peer node proxies and connection pools via Dashboard
@@ -133,6 +134,17 @@ ping 10.0.0.2
 ```
 
 > **Note**: VPN requires root/admin privileges to create TUN devices. Run with `sudo` on Linux/macOS.
+
+#### UDP Hole Punching (NAT Traversal)
+
+NLink has built-in STUN discovery and UDP hole punching. When both sides are behind NAT, it automatically:
+
+1. Discovers public UDP addresses via STUN
+2. Exchanges endpoint info through the TCP control channel
+3. Attempts UDP hole punching for direct connection
+4. Falls back to static configured addresses if punching fails
+
+No extra configuration needed — works automatically when VPN is enabled.
 
 ## CLI Options
 
