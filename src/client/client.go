@@ -30,9 +30,9 @@ type Client struct {
 	mu            sync.Mutex
 	seqID         int
 	done          chan struct{}
-	authenticated bool        // 是否曾认证成功
-	poolCount     int         // 全局预建连接数
-	connID        string      // 对端分配的连接ID
+	authenticated bool         // 是否曾认证成功
+	poolCount     int          // 全局预建连接数
+	connID        string       // 对端分配的连接ID
 	crypto        *tcp.Crypto  // 控制通道加密
 	pingStart     atomic.Int64 // 心跳发送时间 (UnixMilli)
 }

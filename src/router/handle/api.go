@@ -123,8 +123,8 @@ func serverStats(c *gin.Context) {
 		}
 		// 获取公网地址和在线对端
 		if engine := vpn.GetGlobalEngine(); engine != nil {
-			if result, err := engine.DiscoverPublicAddr(); err == nil && result.PublicAddr != nil {
-				vpnData["public_addr"] = result.PublicAddr.String()
+			if addr := engine.CachedPublicAddr(); addr != "" {
+				vpnData["public_addr"] = addr
 			}
 			peers := engine.Transport().ListPeers()
 			if len(peers) > 0 {

@@ -18,6 +18,9 @@ type Engine struct {
 	token     string
 	subnet    *net.IPNet // VPN 子网，用于过滤非本网段流量
 
+	cachedPublicAddr string
+	publicAddrMu     sync.RWMutex
+
 	stopOnce sync.Once
 	stopCh   chan struct{}
 }
@@ -83,6 +86,7 @@ func (e *Engine) Start() {
 
 	go e.tunToUDP()
 	go e.udpToTUN()
+	go e.refreshPublicAddr()
 }
 
 // Stop 停止 VPN 引擎
@@ -93,6 +97,23 @@ func (e *Engine) Stop() {
 		e.transport.Close()
 		logger.Info("[VPN] 引擎已停止")
 	})
+}
+
+// refreshPublicAddr 定期刷新公网地址缓存
+func (e *Engine) refreshPublicAddr() {
+	// 立即探测一次
+	e.DiscoverPublicAddr()
+
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			e.DiscoverPublicAddr()
+		case <-e.stopCh:
+			return
+		}
+	}
 }
 
 // AddPeer 添加对端节点
@@ -113,7 +134,20 @@ func (e *Engine) AddPeer(virtualIP string, endpoint string) error {
 
 // DiscoverPublicAddr 通过 STUN 探测本机公网地址
 func (e *Engine) DiscoverPublicAddr() (*STUNResult, error) {
-	return STUNDiscover(e.transport.Conn(), 3*time.Second)
+	result, err := STUNDiscover(e.transport.Conn(), 3*time.Second)
+	if err == nil && result.PublicAddr != nil {
+		e.publicAddrMu.Lock()
+		e.cachedPublicAddr = result.PublicAddr.String()
+		e.publicAddrMu.Unlock()
+	}
+	return result, err
+}
+
+// CachedPublicAddr 返回缓存的公网地址（非阻塞）
+func (e *Engine) CachedPublicAddr() string {
+	e.publicAddrMu.RLock()
+	defer e.publicAddrMu.RUnlock()
+	return e.cachedPublicAddr
 }
 
 // PunchPeer 尝试对指定对端进行 UDP 打洞
