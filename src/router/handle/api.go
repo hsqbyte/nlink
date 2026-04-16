@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hsqbyte/nlink/src/core/config"
 	"github.com/hsqbyte/nlink/src/core/tcp"
+	"github.com/hsqbyte/nlink/src/core/vpn"
 	"github.com/hsqbyte/nlink/src/router"
 	"github.com/hsqbyte/nlink/src/services"
 )
@@ -114,12 +115,31 @@ func serverStats(c *gin.Context) {
 	// VPN 信息
 	vpnCfg := config.GlobalConfig.Node.VPN
 	if vpnCfg != nil && vpnCfg.IsEnabled() {
-		data["vpn"] = gin.H{
+		vpnData := gin.H{
 			"enabled":     true,
 			"virtual_ip":  vpnCfg.VirtualIP,
 			"listen_port": vpnCfg.ListenPort,
 			"mtu":         vpnCfg.MTU,
 		}
+		// 获取公网地址和在线对端
+		if engine := vpn.GetGlobalEngine(); engine != nil {
+			if result, err := engine.DiscoverPublicAddr(); err == nil && result.PublicAddr != nil {
+				vpnData["public_addr"] = result.PublicAddr.String()
+			}
+			peers := engine.Transport().ListPeers()
+			if len(peers) > 0 {
+				peerList := make([]gin.H, 0, len(peers))
+				for _, p := range peers {
+					peerList = append(peerList, gin.H{
+						"virtual_ip": p.VirtualIP.String(),
+						"endpoint":   p.Endpoint.String(),
+						"last_seen":  p.LastSeen.Format("2006-01-02 15:04:05"),
+					})
+				}
+				vpnData["peers"] = peerList
+			}
+		}
+		data["vpn"] = vpnData
 	}
 	// 对端 VPN 信息（从配置中读取）
 	if len(config.GlobalConfig.Peers) > 0 {

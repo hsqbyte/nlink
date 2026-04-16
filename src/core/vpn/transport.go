@@ -88,6 +88,16 @@ func (t *UDPTransport) GetPeer(virtualIP net.IP) (*UDPPeer, bool) {
 	return v.(*UDPPeer), true
 }
 
+// ListPeers 返回所有已知对端
+func (t *UDPTransport) ListPeers() []*UDPPeer {
+	var result []*UDPPeer
+	t.peers.Range(func(_, v interface{}) bool {
+		result = append(result, v.(*UDPPeer))
+		return true
+	})
+	return result
+}
+
 // SendTo 加密并发送 IP 包到指定对端
 func (t *UDPTransport) SendTo(packet []byte, dstVirtualIP net.IP) error {
 	peer, ok := t.GetPeer(dstVirtualIP)

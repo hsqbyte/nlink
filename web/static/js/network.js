@@ -3,6 +3,7 @@ let netNodes = null;       // vis.DataSet
 let netEdges = null;       // vis.DataSet
 let netGraph = null;       // vis.Network instance
 let netNodeData = {};      // id → { type, info, proxies, gateway, path }
+let vpnPeerEndpoints = {}; // virtual_ip → endpoint
 let netSelectedId = null;
 
 const NET_COLORS = {
@@ -49,6 +50,12 @@ async function initNetwork() {
       proxies: selfProxies, gateway: null, path: [], label: nodeName
     };
 
+    // Build VPN peer endpoint lookup by virtual_ip
+    vpnPeerEndpoints = {};
+    if (vpn && vpn.peers) {
+      vpn.peers.forEach(p => { vpnPeerEndpoints[p.virtual_ip] = p.endpoint; });
+    }
+
     // Upstream peers (nodes this instance connects to)
     const peerVPN = j.data.peer_vpn || {};
     upstream.forEach(u => {
@@ -63,7 +70,8 @@ async function initNetwork() {
       });
       const proxyLabel = (u.proxies || []).map(p => p).join(', ');
       const latencyLabel = u.latency > 0 ? u.latency + 'ms' : '';
-      const vpnLabel = (vpn && vpn.enabled && uVPN) ? '🔒 VPN' : '';
+      const peerEndpoint = uVPN ? vpnPeerEndpoints[uVPN.virtual_ip] || '' : '';
+      const vpnLabel = (vpn && vpn.enabled && uVPN) ? (peerEndpoint || 'VPN') : '';
       const edgeLabel = [proxyLabel, latencyLabel, vpnLabel].filter(Boolean).join(' · ');
       edges.push({
         from: 'self', to: uid, width: 2, arrows: { to: { enabled: true, scaleFactor: 0.6 } },
@@ -305,6 +313,7 @@ function renderServerDetail(nd) {
   if (i.vpn && i.vpn.enabled) {
     h += netInfoItem('虚拟 IP', i.vpn.virtual_ip) +
       netInfoItem('VPN 端口', 'UDP :' + i.vpn.listen_port);
+    if (i.vpn.public_addr) h += netInfoItem('公网端点', i.vpn.public_addr);
   }
   h += '</div>';
   h += '<div class="net-sep"></div>';
@@ -328,6 +337,8 @@ function renderUpstreamDetail(id, nd) {
   if (i.vpn) {
     h += netInfoItem('虚拟 IP', i.vpn.virtual_ip);
     if (i.vpn.vpn_port) h += netInfoItem('VPN 端口', 'UDP :' + i.vpn.vpn_port);
+    const ep = vpnPeerEndpoints[i.vpn.virtual_ip];
+    if (ep) h += netInfoItem('公网端点', ep);
   }
   h += '</div>';
   if (i.proxies_names && i.proxies_names.length) {

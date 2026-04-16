@@ -46,7 +46,17 @@ async function refresh() {
     if (vpn && vpn.enabled) {
       $('vpn-card').style.display = '';
       $('s-vpn-ip').textContent = vpn.virtual_ip;
-      $('s-vpn-port').textContent = 'UDP :' + vpn.listen_port;
+      let portInfo = 'UDP :' + vpn.listen_port;
+      if (vpn.public_addr) portInfo += ' | 公网 ' + vpn.public_addr;
+      $('s-vpn-port').textContent = portInfo;
+      // VPN 对端列表
+      const peerEl = $('s-vpn-peers');
+      if (peerEl && vpn.peers && vpn.peers.length > 0) {
+        peerEl.textContent = vpn.peers.map(p => p.virtual_ip + ' (' + p.endpoint + ')').join(', ');
+        peerEl.style.display = '';
+      } else if (peerEl) {
+        peerEl.style.display = 'none';
+      }
     } else {
       $('vpn-card').style.display = 'none';
     }
