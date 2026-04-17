@@ -7,8 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-This block documents the four-batch audit-driven rollout completed in the current development cycle.
-Covers commits `5b096b3` → `52ce1c6`.
+## [v2.3.0] — Batch 5: user-visible features (`198258f`)
+
+Covers the four user-visible features selected after the Batch 1-4 audit rollout.
+
+### Added
+- **Proxy edit** — `PUT /api/v1/peers/:name/proxies/:proxyName` and dashboard ✎ button on proxy cards (pre-fills the add-form, submits as update; gateway path falls back to sequential remove + add).
+- **SIGHUP hot-reload** — `kill -HUP <pid>` re-reads the YAML config; `node.token` / `node.token_prev` are applied at runtime, structural changes (listen port, vpn.enabled, peers topology) are logged as "需要重启".
+- **VPN policy UI** — `PUT /api/v1/vpn/peers/:vip/policy` and per-peer "编辑策略" button on the dashboard (prompt-based editor for `routes` / `allow_cidr` / `deny_cidr`); peer rows now render `virtual_ip (endpoint) routes=N rtt=Xms ↓bytes ↑bytes`.
+- **e2e in CI** — new `e2e` job in `.github/workflows/ci.yml` runs `deploy/e2e/run.sh` on each push/PR, depending on `test`.
+
+### Changed
+- `TunnelService` gains `UpdatePeerProxy(connID, data)` (remove + add, errors bubble up).
+- `config.ReloadConfig(path)` / `config.ApplyReload(newCfg)` added; `main.go` wait loop rewritten as a `select` over SIGINT/SIGTERM and SIGHUP.
+- VPN peer list rendering on the dashboard upgraded from plain text to a rich row layout with per-peer action buttons.
+
+## [v2.2.0] — Batch 1-4 audit rollout (`5b096b3` → `52ce1c6`)
 
 ### Added
 
