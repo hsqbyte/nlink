@@ -1,10 +1,6 @@
 node:
   name: "e2e-client"
   token: "e2e-secret"
-  dashboard:
-    enabled: false
-  vpn:
-    enabled: false
 
 peers:
   - addr: "nlink-server"

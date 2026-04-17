@@ -6,7 +6,7 @@ services:
       dockerfile: deploy/docker/Dockerfile
     image: nlink:e2e
     container_name: nlink-e2e-server
-    command: ["/app/nlink", "-c", "/app/config/server.yaml"]
+    command: ["-c", "/app/config/server.yaml"]
     ports:
       - "7000:7000"
       - "7001:7001"
@@ -33,7 +33,7 @@ services:
   nlink-client:
     image: nlink:e2e
     container_name: nlink-e2e-client
-    command: ["/app/nlink", "-c", "/app/config/client.yaml"]
+    command: ["-c", "/app/config/client.yaml"]
     depends_on:
       nlink-server:
         condition: service_healthy

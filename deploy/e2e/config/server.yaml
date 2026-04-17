@@ -14,5 +14,3 @@ node:
     shutdown_timeout: 10
     username: "admin"
     password: "admin"
-  vpn:
-    enabled: false
