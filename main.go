@@ -18,6 +18,7 @@ import (
 	"github.com/hsqbyte/nlink/src/router"
 	_ "github.com/hsqbyte/nlink/src/router/handle"
 	"github.com/hsqbyte/nlink/src/services"
+	"github.com/hsqbyte/nlink/src/services/audit"
 )
 
 var Version = "dev"
@@ -43,6 +44,15 @@ func main() {
 	logger.InitWithPath("data/logs")
 
 	cfg := config.GlobalConfig
+
+	// 应用审计日志保留策略 (默认 30 天)
+	if cfg.Node.Dashboard != nil {
+		days := cfg.Node.Dashboard.AuditRetainDays
+		if days == 0 {
+			days = 30
+		}
+		audit.SetRetainDays(days)
+	}
 
 	// CLI -dashboard 开关: 如果配置中没有 dashboard 但指定了 -dashboard 则创建
 	if *dashboard && cfg.Node.Dashboard == nil {

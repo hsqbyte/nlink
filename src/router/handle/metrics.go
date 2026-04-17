@@ -1,18 +1,47 @@
 package handle
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hsqbyte/nlink/src/core/config"
 	"github.com/hsqbyte/nlink/src/router"
 	"github.com/hsqbyte/nlink/src/services"
 )
 
 func init() {
-	// /metrics 不走认证，方便 Prometheus 抓取；部署时通过网络策略限制访问源
-	router.Engine.GET("/metrics", PrometheusMetrics)
+	// /metrics: 默认免认证；当 dashboard.metrics_token 配置后要求 Bearer Token
+	router.Engine.GET("/metrics", metricsAuth, PrometheusMetrics)
+}
+
+// metricsAuth 校验 metrics_token (Bearer Header 或 ?token=)
+func metricsAuth(c *gin.Context) {
+	dc := config.GlobalConfig.Node.Dashboard
+	if dc == nil || dc.MetricsToken == "" {
+		c.Next()
+		return
+	}
+	want := dc.MetricsToken
+	got := ""
+	if h := c.GetHeader("Authorization"); h != "" {
+		if strings.HasPrefix(h, "Bearer ") {
+			got = strings.TrimPrefix(h, "Bearer ")
+		} else if strings.HasPrefix(h, "bearer ") {
+			got = strings.TrimPrefix(h, "bearer ")
+		}
+	}
+	if got == "" {
+		got = c.Query("token")
+	}
+	if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
+		c.Header("WWW-Authenticate", `Bearer realm="metrics"`)
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "metrics token required"})
+		return
+	}
+	c.Next()
 }
 
 // PrometheusMetrics 输出 Prometheus 纯文本格式指标

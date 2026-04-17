@@ -2,15 +2,18 @@ package middleware
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 
 	"github.com/fastgox/utils/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/hsqbyte/nlink/src/services/audit"
 )
 
 // Audit 记录敏感操作日志（POST/PUT/DELETE）
 // 记录: who (user), what (method+path), ip, req_id, status, body 前 200 字节
+// 同时落盘为 JSONL: data/logs/YYYY-MM-DD/audit/audit-YYYY-MM-DD.log
 func Audit() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		method := c.Request.Method
@@ -41,8 +44,28 @@ func Audit() gin.HandlerFunc {
 		if user == nil {
 			user = "anon"
 		}
-		logger.Info("[Audit] user=%v ip=%s method=%s path=%s status=%d req_id=%v body=%q",
-			user, c.ClientIP(), method, c.Request.URL.Path, c.Writer.Status(), rid, bodySnippet)
+		role, _ := c.Get("role")
+		ridStr := ""
+		if rid != nil {
+			ridStr = fmt.Sprint(rid)
+		}
+		roleStr := ""
+		if role != nil {
+			roleStr = fmt.Sprint(role)
+		}
+		logger.Info("[Audit] user=%v role=%s ip=%s method=%s path=%s status=%d req_id=%s body=%q",
+			user, roleStr, c.ClientIP(), method, c.Request.URL.Path, c.Writer.Status(), ridStr, bodySnippet)
+
+		audit.Append(audit.Record{
+			User:      fmt.Sprint(user),
+			Role:      roleStr,
+			IP:        c.ClientIP(),
+			Method:    method,
+			Path:      c.Request.URL.Path,
+			Status:    c.Writer.Status(),
+			RequestID: ridStr,
+			Body:      bodySnippet,
+		})
 	}
 }
 

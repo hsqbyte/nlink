@@ -21,15 +21,45 @@ type ListenConfig struct {
 	VhostHTTPPort     int `yaml:"vhost_http_port"`      // HTTP 虚拟主机端口 (type=http 的代理在此端口共享)
 }
 
+// DashboardUser 单个用户
+type DashboardUser struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	Role     string `yaml:"role"` // "admin" | "viewer"（默认 viewer）
+}
+
 // DashboardConfig 管理面板配置
 type DashboardConfig struct {
-	Enabled         *bool  `yaml:"enabled"`          // 是否启用 (默认 true)
-	Port            int    `yaml:"port"`             // HTTP 端口
-	ShutdownTimeout int    `yaml:"shutdown_timeout"` // 优雅关闭超时(秒)
-	Username        string `yaml:"username"`         // 登录用户名 (留空则不启用认证)
-	Password        string `yaml:"password"`         // 登录密码
-	TLSCertFile     string `yaml:"tls_cert_file"`    // TLS 证书文件 (留空则 HTTP)
-	TLSKeyFile      string `yaml:"tls_key_file"`     // TLS 私钥文件
+	Enabled         *bool           `yaml:"enabled"`          // 是否启用 (默认 true)
+	Port            int             `yaml:"port"`             // HTTP 端口
+	ShutdownTimeout int             `yaml:"shutdown_timeout"` // 优雅关闭超时(秒)
+	Username        string          `yaml:"username"`         // 登录用户名 (留空则不启用认证；存在时视为 admin)
+	Password        string          `yaml:"password"`         // 登录密码
+	Users           []DashboardUser `yaml:"users"`            // 多用户列表（可与 username/password 共存）
+	TLSCertFile     string          `yaml:"tls_cert_file"`    // TLS 证书文件 (留空则 HTTP)
+	TLSKeyFile      string          `yaml:"tls_key_file"`     // TLS 私钥文件
+	MetricsToken    string          `yaml:"metrics_token"`    // /metrics 端点 Bearer Token (留空则不鉴权)
+	AuditRetainDays int             `yaml:"audit_retain_days"` // 审计日志保留天数 (默认 30，0=永久)
+}
+
+// LookupUser 返回用户名对应的角色 (admin/viewer)，找不到返回 ""
+func (d *DashboardConfig) LookupUser(username, password string) string {
+	if d == nil {
+		return ""
+	}
+	if d.Username != "" && username == d.Username && password == d.Password {
+		return "admin"
+	}
+	for _, u := range d.Users {
+		if u.Username == username && u.Password == password {
+			role := u.Role
+			if role != "admin" && role != "viewer" {
+				role = "viewer"
+			}
+			return role
+		}
+	}
+	return ""
 }
 
 // IsEnabled 返回面板是否启用
@@ -48,7 +78,10 @@ func (d *DashboardConfig) AuthRequired() bool {
 	if d == nil {
 		return false
 	}
-	return d.Username != "" && d.Password != ""
+	if d.Username != "" && d.Password != "" {
+		return true
+	}
+	return len(d.Users) > 0
 }
 
 // TLSEnabled 返回是否启用 HTTPS
@@ -61,16 +94,20 @@ func (d *DashboardConfig) TLSEnabled() bool {
 
 // PeerConfig 对端节点配置
 type PeerConfig struct {
-	Addr         string        `yaml:"addr"`           // 对端地址
-	Port         int           `yaml:"port"`           // 对端控制端口
-	Token        string        `yaml:"token"`          // 认证令牌
-	PoolCount    int           `yaml:"pool_count"`     // 预建连接数(0=禁用)
-	Proxies      []ProxyConfig `yaml:"proxies"`        // 代理列表
-	VPNPort      int           `yaml:"vpn_port"`       // 对端 VPN UDP 端口（可选）
-	VirtualIP    string        `yaml:"virtual_ip"`     // 对端虚拟 IP（可选）
-	VPNRoutes    []string      `yaml:"vpn_routes"`     // 对端宣告的子网路由 CIDR（流量路由到对端）
-	VPNAllowCIDR []string      `yaml:"vpn_allow_cidr"` // VPN 白名单 CIDR（与对端之间仅允许）
-	VPNDenyCIDR  []string      `yaml:"vpn_deny_cidr"`  // VPN 黑名单 CIDR
+	Addr              string        `yaml:"addr"`                // 对端地址
+	Port              int           `yaml:"port"`                // 对端控制端口
+	Token             string        `yaml:"token"`               // 认证令牌
+	PoolCount         int           `yaml:"pool_count"`          // 预建连接数(0=禁用)
+	Proxies           []ProxyConfig `yaml:"proxies"`             // 代理列表
+	VPNPort           int           `yaml:"vpn_port"`            // 对端 VPN UDP 端口（可选）
+	VirtualIP         string        `yaml:"virtual_ip"`          // 对端虚拟 IP（可选）
+	VPNRoutes         []string      `yaml:"vpn_routes"`          // 对端宣告的子网路由 CIDR（流量路由到对端）
+	VPNAllowCIDR      []string      `yaml:"vpn_allow_cidr"`      // VPN 白名单 CIDR（与对端之间仅允许）
+	VPNDenyCIDR       []string      `yaml:"vpn_deny_cidr"`       // VPN 黑名单 CIDR
+	TLS               bool          `yaml:"tls"`                 // 控制通道使用 TLS 拨号 (需对端配 stunnel/nginx 等终结)
+	TLSServerName     string        `yaml:"tls_server_name"`     // TLS SNI / 验证主机名 (默认 = addr)
+	TLSInsecureSkip   bool          `yaml:"tls_insecure_skip"`   // 跳过证书校验 (仅自签 / 测试)
+	TLSCAFile         string        `yaml:"tls_ca_file"`         // 自定义 CA 证书 (PEM)
 }
 
 // ProxyConfig 单个代理配置

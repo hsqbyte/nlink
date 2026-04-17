@@ -22,6 +22,7 @@ const sessionTTL = 24 * time.Hour
 type session struct {
 	expiresAt time.Time
 	username  string
+	role      string
 }
 
 // SessionUsername 返回 token 对应的用户名（过期或不存在返回空）
@@ -33,6 +34,17 @@ func SessionUsername(token string) string {
 		return ""
 	}
 	return s.username
+}
+
+// SessionRole 返回 token 对应的角色
+func SessionRole(token string) string {
+	sessionsMu.RLock()
+	defer sessionsMu.RUnlock()
+	s, ok := sessions[token]
+	if !ok || time.Now().After(s.expiresAt) {
+		return ""
+	}
+	return s.role
 }
 
 var (
@@ -95,6 +107,9 @@ func AuthMiddleware() gin.HandlerFunc {
 		if u := SessionUsername(token); u != "" {
 			c.Set("user", u)
 		}
+		if r := SessionRole(token); r != "" {
+			c.Set("role", r)
+		}
 		c.Next()
 	}
 }
@@ -129,7 +144,15 @@ func HandleLogin(c *gin.Context) {
 	usernameMatch := subtle.ConstantTimeCompare([]byte(req.Username), []byte(cfg.Username)) == 1
 	passwordMatch := subtle.ConstantTimeCompare([]byte(req.Password), []byte(cfg.Password)) == 1
 
-	if !usernameMatch || !passwordMatch {
+	role := ""
+	if usernameMatch && passwordMatch {
+		role = "admin"
+	} else {
+		// fallback: 多用户表
+		role = cfg.LookupUser(req.Username, req.Password)
+	}
+
+	if role == "" {
 		locked, retry := loginLimiterRecordFail(ip)
 		if locked {
 			logger.Warn("[Auth] IP %s 登录失败次数超限，已锁定 %s", ip, retry)
@@ -146,7 +169,7 @@ func HandleLogin(c *gin.Context) {
 
 	loginLimiterReset(ip)
 	token := generateSessionToken()
-	addSession(token, req.Username)
+	addSession(token, req.Username, role)
 
 	secure := cfg.TLSEnabled()
 	// SameSite=Strict 可防御大部分 CSRF 攻击：跨站发起的请求不会携带此 cookie
@@ -205,10 +228,10 @@ func IsValidSession(token string) bool {
 	return true
 }
 
-func addSession(token, username string) {
+func addSession(token, username, role string) {
 	sessionsMu.Lock()
 	defer sessionsMu.Unlock()
-	sessions[token] = session{expiresAt: time.Now().Add(sessionTTL), username: username}
+	sessions[token] = session{expiresAt: time.Now().Add(sessionTTL), username: username, role: role}
 }
 
 func removeSession(token string) {

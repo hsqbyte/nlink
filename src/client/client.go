@@ -85,7 +85,7 @@ func (c *Client) run() error {
 	addr := net.JoinHostPort(c.cfg.Addr, fmt.Sprintf("%d", c.cfg.Port))
 	fmt.Printf("[Node:%s] 连接对端: %s\n", c.nodeName, addr)
 
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	conn, err := c.dialPeer(addr, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("连接失败: %w", err)
 	}
@@ -160,7 +160,7 @@ func (c *Client) openPoolConn() {
 	}
 
 	workAddr := net.JoinHostPort(c.cfg.Addr, fmt.Sprintf("%d", c.cfg.Port+1))
-	workConn, err := net.DialTimeout("tcp", workAddr, 5*time.Second)
+	workConn, err := c.dialPeer(workAddr, 5*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[Node:%s] 连接池-工作连接失败: %v\n", c.nodeName, err)
 		return
@@ -426,7 +426,7 @@ func (c *Client) openWorkConn(proxyName string) {
 	}
 
 	workAddr := net.JoinHostPort(c.cfg.Addr, fmt.Sprintf("%d", c.cfg.Port+1))
-	workConn, err := net.DialTimeout("tcp", workAddr, 5*time.Second)
+	workConn, err := c.dialPeer(workAddr, 5*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[Node:%s] 工作连接失败: %v\n", c.nodeName, err)
 		return

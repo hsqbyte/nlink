@@ -38,7 +38,7 @@ func init() {
 	Engine.POST("/api/v1/logout", middleware.HandleLogout)
 
 	APIRouter = Engine.Group("/api/v1")
-	APIRouter.Use(middleware.AuthMiddleware())
+	APIRouter.Use(middleware.AuthMiddleware(), middleware.RequireAdmin())
 
 	// TCP 路由
 	TCPRouter = tcp.NewRouter()
