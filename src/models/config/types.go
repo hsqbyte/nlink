@@ -18,6 +18,7 @@ type ListenConfig struct {
 	MaxProxiesPerPeer int `yaml:"max_proxies_per_peer"` // 每对端最大代理数
 	WorkConnTimeout   int `yaml:"work_conn_timeout"`    // 工作连接超时(秒)
 	PoolCount         int `yaml:"pool_count"`           // 全局连接池大小(0=禁用)
+	VhostHTTPPort     int `yaml:"vhost_http_port"`      // HTTP 虚拟主机端口 (type=http 的代理在此端口共享)
 }
 
 // DashboardConfig 管理面板配置
@@ -71,11 +72,16 @@ type PeerConfig struct {
 
 // ProxyConfig 单个代理配置
 type ProxyConfig struct {
-	Name       string `yaml:"name"`
-	Type       string `yaml:"type"`
-	LocalIP    string `yaml:"local_ip"`
-	LocalPort  int    `yaml:"local_port"`
-	RemotePort int    `yaml:"remote_port"`
+	Name          string   `yaml:"name"`
+	Type          string   `yaml:"type"`
+	LocalIP       string   `yaml:"local_ip"`
+	LocalPort     int      `yaml:"local_port"`
+	RemotePort    int      `yaml:"remote_port"`
+	CustomDomains []string `yaml:"custom_domains,omitempty"` // type=http 时：绑定的自定义域名列表
+	HostRewrite   string   `yaml:"host_rewrite,omitempty"`   // type=http 时：是否改写请求 Host
+	AllowCIDR     []string `yaml:"allow_cidr,omitempty"`     // 仅允许这些 CIDR（优先于 deny）
+	DenyCIDR      []string `yaml:"deny_cidr,omitempty"`      // 拒绝这些 CIDR
+	RateLimit     int64    `yaml:"rate_limit,omitempty"`     // 单连接限速 bytes/sec（0=不限）
 }
 
 // VPNConfig 虚拟局域网配置

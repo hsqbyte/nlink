@@ -60,6 +60,13 @@ func NewServer() (*Server, error) {
 	// 启动统计历史采样（30s 采样周期，保留 1440 点 ≈ 12h）
 	services.StartStatsSampler(30*time.Second, 1440)
 
+	// 启动 HTTP 虚拟主机服务（若配置了端口）
+	if lc.VhostHTTPPort > 0 {
+		if err := services.StartHTTPVhost(lc.VhostHTTPPort, services.GetTunnelService()); err != nil {
+			return nil, fmt.Errorf("HTTP vhost 启动失败: %w", err)
+		}
+	}
+
 	// 设置断连回调: 对端断线时清理代理
 	server.TCP.OnDisconnect = func(connID string) {
 		services.GetTunnelService().RemovePeerProxies(connID)

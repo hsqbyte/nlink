@@ -198,6 +198,12 @@ func (c *Client) openPoolConn() {
 	}
 
 	localAddr := net.JoinHostPort(proxy.LocalIP, fmt.Sprintf("%d", proxy.LocalPort))
+	if proxy.Type == "udp" {
+		fmt.Printf("[Node:%s] 连接池 UDP 转发: %s <-> %s\n", c.nodeName, proxyName, localAddr)
+		relayUDP(workConn, proxy.LocalIP, proxy.LocalPort)
+		go c.openPoolConn()
+		return
+	}
 	localConn, err := net.DialTimeout("tcp", localAddr, 5*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[Node:%s] 连接池-本地连接失败 %s: %v\n", c.nodeName, localAddr, err)
@@ -259,11 +265,16 @@ func (c *Client) auth() error {
 
 func (c *Client) registerProxy(p modelConfig.ProxyConfig) error {
 	return c.sendAndExpect("new_proxy", tcp.NewProxyData{
-		Name:       p.Name,
-		Type:       p.Type,
-		RemotePort: p.RemotePort,
-		LocalIP:    p.LocalIP,
-		LocalPort:  p.LocalPort,
+		Name:          p.Name,
+		Type:          p.Type,
+		RemotePort:    p.RemotePort,
+		LocalIP:       p.LocalIP,
+		LocalPort:     p.LocalPort,
+		CustomDomains: p.CustomDomains,
+		HostRewrite:   p.HostRewrite,
+		AllowCIDR:     p.AllowCIDR,
+		DenyCIDR:      p.DenyCIDR,
+		RateLimit:     p.RateLimit,
 	}, "new_proxy")
 }
 
@@ -433,6 +444,12 @@ func (c *Client) openWorkConn(proxyName string) {
 	}
 
 	localAddr := net.JoinHostPort(proxy.LocalIP, fmt.Sprintf("%d", proxy.LocalPort))
+	if proxy.Type == "udp" {
+		fmt.Printf("[Node:%s] 开始 UDP 转发: %s <-> %s\n", c.nodeName, proxyName, localAddr)
+		relayUDP(workConn, proxy.LocalIP, proxy.LocalPort)
+		go c.openPoolConn()
+		return
+	}
 	localConn, err := net.DialTimeout("tcp", localAddr, 5*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[Node:%s] 本地连接失败 %s: %v\n", c.nodeName, localAddr, err)
@@ -478,11 +495,16 @@ func (c *Client) handleAddProxy(seq string, data *tcp.AddProxyData) {
 	}
 
 	newProxy := modelConfig.ProxyConfig{
-		Name:       data.Name,
-		Type:       data.Type,
-		LocalIP:    data.LocalIP,
-		LocalPort:  data.LocalPort,
-		RemotePort: data.RemotePort,
+		Name:          data.Name,
+		Type:          data.Type,
+		LocalIP:       data.LocalIP,
+		LocalPort:     data.LocalPort,
+		RemotePort:    data.RemotePort,
+		CustomDomains: data.CustomDomains,
+		HostRewrite:   data.HostRewrite,
+		AllowCIDR:     data.AllowCIDR,
+		DenyCIDR:      data.DenyCIDR,
+		RateLimit:     data.RateLimit,
 	}
 
 	c.cfg.Proxies = append(c.cfg.Proxies, newProxy)
@@ -766,4 +788,71 @@ func relay(c1, c2 net.Conn) {
 	wg.Wait()
 	c1.Close()
 	c2.Close()
+}
+
+// relayUDP 在 workConn(TCP) 与本地 UDP 服务之间做分帧转发。
+// workConn 上的格式: [len:uint16 BE][payload]
+// 转发结束后 workConn 已关闭。
+func relayUDP(workConn net.Conn, localIP string, localPort int) {
+	defer workConn.Close()
+
+	localAddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(localIP, fmt.Sprintf("%d", localPort)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[UDP] 解析本地地址失败: %v\n", err)
+		return
+	}
+	udpConn, err := net.DialUDP("udp", nil, localAddr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[UDP] 连接本地失败 %s: %v\n", localAddr, err)
+		return
+	}
+	defer udpConn.Close()
+
+	done := make(chan struct{}, 2)
+
+	// workConn -> local UDP
+	go func() {
+		defer func() { done <- struct{}{} }()
+		for {
+			var hdr [2]byte
+			if _, err := io.ReadFull(workConn, hdr[:]); err != nil {
+				return
+			}
+			n := binary.BigEndian.Uint16(hdr[:])
+			if n == 0 {
+				continue
+			}
+			buf := make([]byte, n)
+			if _, err := io.ReadFull(workConn, buf); err != nil {
+				return
+			}
+			if _, err := udpConn.Write(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	// local UDP -> workConn
+	go func() {
+		defer func() { done <- struct{}{} }()
+		buf := make([]byte, 65507)
+		for {
+			udpConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+			n, err := udpConn.Read(buf)
+			if err != nil {
+				return
+			}
+			if n > 0xFFFF {
+				continue
+			}
+			frame := make([]byte, 2+n)
+			binary.BigEndian.PutUint16(frame[:2], uint16(n))
+			copy(frame[2:], buf[:n])
+			if _, err := workConn.Write(frame); err != nil {
+				return
+			}
+		}
+	}()
+
+	<-done
 }

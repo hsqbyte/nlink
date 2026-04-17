@@ -34,11 +34,16 @@ type AuthData struct {
 
 // NewProxyData 注册代理请求
 type NewProxyData struct {
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	RemotePort int    `json:"remote_port"`
-	LocalIP    string `json:"local_ip"`
-	LocalPort  int    `json:"local_port"`
+	Name          string   `json:"name"`
+	Type          string   `json:"type"`
+	RemotePort    int      `json:"remote_port"`
+	LocalIP       string   `json:"local_ip"`
+	LocalPort     int      `json:"local_port"`
+	CustomDomains []string `json:"custom_domains,omitempty"`
+	HostRewrite   string   `json:"host_rewrite,omitempty"`
+	AllowCIDR     []string `json:"allow_cidr,omitempty"`
+	DenyCIDR      []string `json:"deny_cidr,omitempty"`
+	RateLimit     int64    `json:"rate_limit,omitempty"`
 }
 
 // NewProxyResp 注册代理响应
@@ -81,11 +86,16 @@ type ProxyDetail struct {
 
 // AddProxyData 下发：添加代理
 type AddProxyData struct {
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	LocalIP    string `json:"local_ip"`
-	LocalPort  int    `json:"local_port"`
-	RemotePort int    `json:"remote_port"`
+	Name          string   `json:"name"`
+	Type          string   `json:"type"`
+	LocalIP       string   `json:"local_ip"`
+	LocalPort     int      `json:"local_port"`
+	RemotePort    int      `json:"remote_port"`
+	CustomDomains []string `json:"custom_domains,omitempty"`
+	HostRewrite   string   `json:"host_rewrite,omitempty"`
+	AllowCIDR     []string `json:"allow_cidr,omitempty"`
+	DenyCIDR      []string `json:"deny_cidr,omitempty"`
+	RateLimit     int64    `json:"rate_limit,omitempty"`
 }
 
 // RemoveProxyData 下发：删除代理

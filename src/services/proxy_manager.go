@@ -11,15 +11,18 @@ import (
 // ---- 代理管理 ----
 
 // RegisterProxy 注册代理
-func (ts *TunnelService) RegisterProxy(connID string, name string, remotePort int) error {
+func (ts *TunnelService) RegisterProxy(connID string, name string, remotePort int, opts *ProxyOptions) error {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
 	if _, exists := ts.proxies[name]; exists {
 		return fmt.Errorf("代理已存在: %s", name)
 	}
+	if _, exists := ts.udpProxies[name]; exists {
+		return fmt.Errorf("代理已存在: %s", name)
+	}
 
-	proxy, err := NewTCPProxy(name, remotePort, connID, ts)
+	proxy, err := NewTCPProxy(name, remotePort, connID, ts, opts)
 	if err != nil {
 		return err
 	}
@@ -35,6 +38,84 @@ func (ts *TunnelService) RegisterProxy(connID string, name string, remotePort in
 	go proxy.Run()
 	peerName := ts.peerNames[connID]
 	logger.Info("[Tunnel] 代理注册成功: name=%s port=%d peer=%s(%s)", name, remotePort, peerName, connID)
+	return nil
+}
+
+// RegisterUDPProxy 注册 UDP 代理
+func (ts *TunnelService) RegisterUDPProxy(connID string, name string, remotePort int, opts *ProxyOptions) error {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	if _, exists := ts.proxies[name]; exists {
+		return fmt.Errorf("代理已存在: %s", name)
+	}
+	if _, exists := ts.udpProxies[name]; exists {
+		return fmt.Errorf("代理已存在: %s", name)
+	}
+
+	proxy, err := NewUDPProxy(name, remotePort, connID, ts, opts)
+	if err != nil {
+		return err
+	}
+
+	ts.udpProxies[name] = proxy
+	ts.peerProxies[connID] = append(ts.peerProxies[connID], name)
+
+	go proxy.Run()
+	peerName := ts.peerNames[connID]
+	logger.Info("[Tunnel] UDP 代理注册成功: name=%s port=%d peer=%s(%s)", name, remotePort, peerName, connID)
+	return nil
+}
+
+// RegisterHTTPProxy 注册 HTTP 虚拟主机代理（type=http）
+func (ts *TunnelService) RegisterHTTPProxy(connID string, name string, customDomains []string, hostRewrite string, opts *ProxyOptions) error {
+	vhost := GetHTTPVhost()
+	if vhost == nil {
+		return fmt.Errorf("未启用 vhost_http_port，无法注册 type=http 代理")
+	}
+	ts.mu.Lock()
+	// 名称全局唯一
+	if _, exists := ts.proxies[name]; exists {
+		ts.mu.Unlock()
+		return fmt.Errorf("代理已存在: %s", name)
+	}
+	if _, exists := ts.udpProxies[name]; exists {
+		ts.mu.Unlock()
+		return fmt.Errorf("代理已存在: %s", name)
+	}
+	ts.mu.Unlock()
+
+	hp := &HTTPProxy{
+		Name:          name,
+		CustomDomains: customDomains,
+		HostRewrite:   hostRewrite,
+		PeerConnID:    connID,
+		WorkConnCh:    make(chan net.Conn, 20),
+		tunnel:        ts,
+	}
+	if opts != nil {
+		if len(opts.AllowCIDR) > 0 || len(opts.DenyCIDR) > 0 {
+			acl, err := ParseACL(opts.AllowCIDR, opts.DenyCIDR)
+			if err != nil {
+				return err
+			}
+			hp.acl = acl
+		}
+		hp.rateLimitBps = opts.RateLimit
+	}
+	if err := vhost.Register(hp); err != nil {
+		return err
+	}
+
+	ts.mu.Lock()
+	ts.peerProxies[connID] = append(ts.peerProxies[connID], name)
+	if _, ok := ts.peerPools[connID]; !ok {
+		ts.peerPools[connID] = newPeerPool(50)
+	}
+	ts.mu.Unlock()
+
+	peerName := ts.peerNames[connID]
+	logger.Info("[Tunnel] HTTP 代理注册成功: name=%s domains=%v peer=%s(%s)", name, customDomains, peerName, connID)
 	return nil
 }
 
@@ -54,16 +135,31 @@ func (ts *TunnelService) RequestWorkConn(proxyName string, peerConnID string) {
 func (ts *TunnelService) DeliverWorkConn(proxyName string, conn net.Conn) bool {
 	ts.mu.RLock()
 	proxy, ok := ts.proxies[proxyName]
+	udpProxy, uok := ts.udpProxies[proxyName]
 	ts.mu.RUnlock()
-	if !ok {
-		return false
+	if ok {
+		select {
+		case proxy.WorkConnCh <- conn:
+			return true
+		default:
+			return false
+		}
 	}
-	select {
-	case proxy.WorkConnCh <- conn:
-		return true
-	default:
-		return false
+	if uok {
+		select {
+		case udpProxy.WorkConnCh <- conn:
+			return true
+		default:
+			return false
+		}
 	}
+	// 尝试投递给 HTTP vhost
+	if vhost := GetHTTPVhost(); vhost != nil {
+		if vhost.Deliver(proxyName, conn) {
+			return true
+		}
+	}
+	return false
 }
 
 // DeliverPoolConn 将池连接投递到对端全局连接池
@@ -111,6 +207,14 @@ func (ts *TunnelService) RemovePeerProxies(connID string) {
 				delete(ts.proxies, name)
 				logger.Info("[Tunnel] 代理已移除: %s", name)
 			}
+			if uproxy, exists := ts.udpProxies[name]; exists {
+				uproxy.Close()
+				delete(ts.udpProxies, name)
+				logger.Info("[Tunnel] UDP 代理已移除: %s", name)
+			}
+			if vhost := GetHTTPVhost(); vhost != nil {
+				vhost.Unregister(name)
+			}
 		}
 		delete(ts.peerProxies, connID)
 	}
@@ -137,10 +241,11 @@ func (ts *TunnelService) ListProxies() []ProxyInfo {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 
-	result := make([]ProxyInfo, 0, len(ts.proxies))
+	result := make([]ProxyInfo, 0, len(ts.proxies)+len(ts.udpProxies))
 	for _, p := range ts.proxies {
 		result = append(result, ProxyInfo{
 			Name:         p.Name,
+			Type:         "tcp",
 			RemotePort:   p.RemotePort,
 			PeerConnID:   p.PeerConnID,
 			PeerName:     ts.peerNames[p.PeerConnID],
@@ -150,7 +255,38 @@ func (ts *TunnelService) ListProxies() []ProxyInfo {
 			BytesOut:     p.BytesOut.Load(),
 			PoolHits:     p.PoolHits.Load(),
 			OnDemandHits: p.OnDemandHits.Load(),
+			RejectedACL:  p.RejectedACL.Load(),
 		})
+	}
+	for _, p := range ts.udpProxies {
+		result = append(result, ProxyInfo{
+			Name:        p.Name,
+			Type:        "udp",
+			RemotePort:  p.RemotePort,
+			PeerConnID:  p.PeerConnID,
+			PeerName:    ts.peerNames[p.PeerConnID],
+			TotalConns:  p.TotalSessions.Load(),
+			ActiveConns: p.ActiveSess.Load(),
+			BytesIn:     p.BytesIn.Load(),
+			BytesOut:    p.BytesOut.Load(),
+			RejectedACL: p.RejectedACL.Load(),
+		})
+	}
+	if vhost := GetHTTPVhost(); vhost != nil {
+		for _, p := range vhost.List() {
+			result = append(result, ProxyInfo{
+				Name:        p.Name,
+				Type:        "http",
+				RemotePort:  vhost.port,
+				PeerConnID:  p.PeerConnID,
+				PeerName:    ts.peerNames[p.PeerConnID],
+				TotalConns:  p.TotalConns.Load(),
+				ActiveConns: p.ActiveConns.Load(),
+				BytesIn:     p.BytesIn.Load(),
+				BytesOut:    p.BytesOut.Load(),
+				RejectedACL: p.RejectedACL.Load(),
+			})
+		}
 	}
 	return result
 }
@@ -167,11 +303,17 @@ func (ts *TunnelService) ServerStats() ServerStatsInfo {
 		bytesIn += p.BytesIn.Load()
 		bytesOut += p.BytesOut.Load()
 	}
+	for _, p := range ts.udpProxies {
+		totalConns += p.TotalSessions.Load()
+		activeConns += p.ActiveSess.Load()
+		bytesIn += p.BytesIn.Load()
+		bytesOut += p.BytesOut.Load()
+	}
 
 	return ServerStatsInfo{
 		Uptime:      int64(ts.uptime().Seconds()),
 		PeerCount:   len(ts.peerProxies),
-		ProxyCount:  len(ts.proxies),
+		ProxyCount:  len(ts.proxies) + len(ts.udpProxies),
 		TotalConns:  totalConns,
 		ActiveConns: activeConns,
 		BytesIn:     bytesIn,
@@ -187,6 +329,10 @@ func (ts *TunnelService) CloseAll() {
 		proxy.Close()
 		delete(ts.proxies, name)
 	}
+	for name, proxy := range ts.udpProxies {
+		proxy.Close()
+		delete(ts.udpProxies, name)
+	}
 	// 清理所有连接池
 	for connID, pool := range ts.peerPools {
 		delete(ts.peerPools, connID)
@@ -200,23 +346,48 @@ func (ts *TunnelService) CloseAll() {
 // RemoveProxy 移除指定代理
 func (ts *TunnelService) RemoveProxy(name string) bool {
 	ts.mu.Lock()
-	defer ts.mu.Unlock()
-	proxy, ok := ts.proxies[name]
-	if !ok {
-		return false
+	removed := false
+	if proxy, ok := ts.proxies[name]; ok {
+		proxy.Close()
+		delete(ts.proxies, name)
+		removed = true
+	} else if uproxy, ok := ts.udpProxies[name]; ok {
+		uproxy.Close()
+		delete(ts.udpProxies, name)
+		removed = true
 	}
-	proxy.Close()
-	delete(ts.proxies, name)
-	for connID, names := range ts.peerProxies {
-		for i, n := range names {
-			if n == name {
-				ts.peerProxies[connID] = append(names[:i], names[i+1:]...)
-				break
+	if removed {
+		for connID, names := range ts.peerProxies {
+			for i, n := range names {
+				if n == name {
+					ts.peerProxies[connID] = append(names[:i], names[i+1:]...)
+					break
+				}
 			}
 		}
 	}
-	logger.Info("[Tunnel] 代理已手动移除: %s", name)
-	return true
+	ts.mu.Unlock()
+	if !removed {
+		if vhost := GetHTTPVhost(); vhost != nil {
+			if vhost.Unregister(name) {
+				ts.mu.Lock()
+				for connID, names := range ts.peerProxies {
+					for i, n := range names {
+						if n == name {
+							ts.peerProxies[connID] = append(names[:i], names[i+1:]...)
+							break
+						}
+					}
+				}
+				ts.mu.Unlock()
+				removed = true
+			}
+		}
+	}
+	if removed {
+		logger.Info("[Tunnel] 代理已手动移除: %s", name)
+	}
+	return removed
 }
 
 // KickPeer 踢出指定对端
@@ -236,6 +407,7 @@ func (ts *TunnelService) KickPeer(connID string) bool {
 // ProxyInfo 代理信息（含统计）
 type ProxyInfo struct {
 	Name         string `json:"name"`
+	Type         string `json:"type"`
 	RemotePort   int    `json:"remote_port"`
 	PeerConnID   string `json:"peer_conn_id"`
 	PeerName     string `json:"peer_name"`
@@ -245,6 +417,7 @@ type ProxyInfo struct {
 	BytesOut     int64  `json:"bytes_out"`
 	PoolHits     int64  `json:"pool_hits"`
 	OnDemandHits int64  `json:"on_demand_hits"`
+	RejectedACL  int64  `json:"rejected_acl"`
 }
 
 // ServerStatsInfo 节点全局统计

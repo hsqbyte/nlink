@@ -113,7 +113,20 @@ func (ts *TunnelService) GetPeerConfig(connID string) (*tcp.PeerConfigData, erro
 // AddPeerProxy 远程添加对端代理
 func (ts *TunnelService) AddPeerProxy(connID string, data *tcp.AddProxyData) error {
 	// 先在本节点注册代理端口
-	if err := ts.RegisterProxy(connID, data.Name, data.RemotePort); err != nil {
+	opts := &ProxyOptions{
+		AllowCIDR: data.AllowCIDR,
+		DenyCIDR:  data.DenyCIDR,
+		RateLimit: data.RateLimit,
+	}
+	var err error
+	if data.Type == "udp" {
+		err = ts.RegisterUDPProxy(connID, data.Name, data.RemotePort, opts)
+	} else if data.Type == "http" {
+		err = ts.RegisterHTTPProxy(connID, data.Name, data.CustomDomains, data.HostRewrite, opts)
+	} else {
+		err = ts.RegisterProxy(connID, data.Name, data.RemotePort, opts)
+	}
+	if err != nil {
 		return fmt.Errorf("注册代理失败: %w", err)
 	}
 

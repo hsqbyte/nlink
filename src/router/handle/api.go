@@ -287,15 +287,23 @@ func addPeerProxy(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
 		return
 	}
-	if req.Name == "" || req.RemotePort <= 0 || req.LocalPort <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少必要参数: name, remote_port, local_port"})
+	if req.Name == "" || req.LocalPort <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少必要参数: name, local_port"})
+		return
+	}
+	if req.Type != "http" && req.RemotePort <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少必要参数: remote_port"})
 		return
 	}
 	if !validIdentifier.MatchString(req.Name) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "非法的代理名格式（仅允许字母/数字/下划线/连字符，长度 1-64）"})
 		return
 	}
-	if req.RemotePort < 1 || req.RemotePort > 65535 || req.LocalPort < 1 || req.LocalPort > 65535 {
+	if req.Type != "http" && (req.RemotePort < 1 || req.RemotePort > 65535) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "端口范围非法 (1-65535)"})
+		return
+	}
+	if req.LocalPort < 1 || req.LocalPort > 65535 {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "端口范围非法 (1-65535)"})
 		return
 	}

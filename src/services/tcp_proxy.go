@@ -20,6 +20,10 @@ type TCPProxy struct {
 	WorkConnCh chan net.Conn
 	tunnel     *TunnelService
 
+	// 访问控制 & 限速
+	acl          *ACL
+	rateLimitBps int64 // 单连接限速 bytes/sec；0=不限
+
 	// 统计
 	TotalConns   atomic.Int64
 	ActiveConns  atomic.Int64
@@ -27,26 +31,46 @@ type TCPProxy struct {
 	BytesOut     atomic.Int64
 	PoolHits     atomic.Int64
 	OnDemandHits atomic.Int64
+	RejectedACL  atomic.Int64
 
 	mu     sync.Mutex
 	closed bool
 }
 
+// ProxyOptions 创建代理时的附加选项
+type ProxyOptions struct {
+	AllowCIDR []string
+	DenyCIDR  []string
+	RateLimit int64 // bytes/sec
+}
+
 // NewTCPProxy 创建 TCP 代理并立即监听端口
-func NewTCPProxy(name string, remotePort int, peerConnID string, tunnel *TunnelService) (*TCPProxy, error) {
+func NewTCPProxy(name string, remotePort int, peerConnID string, tunnel *TunnelService, opts *ProxyOptions) (*TCPProxy, error) {
 	addr := net.TCPAddr{Port: remotePort}
 	ln, err := net.ListenTCP("tcp", &addr)
 	if err != nil {
 		return nil, err
 	}
-	return &TCPProxy{
+	p := &TCPProxy{
 		Name:       name,
 		RemotePort: remotePort,
 		PeerConnID: peerConnID,
 		Listener:   ln,
 		WorkConnCh: make(chan net.Conn, 20),
 		tunnel:     tunnel,
-	}, nil
+	}
+	if opts != nil {
+		if len(opts.AllowCIDR) > 0 || len(opts.DenyCIDR) > 0 {
+			acl, err := ParseACL(opts.AllowCIDR, opts.DenyCIDR)
+			if err != nil {
+				ln.Close()
+				return nil, err
+			}
+			p.acl = acl
+		}
+		p.rateLimitBps = opts.RateLimit
+	}
+	return p, nil
 }
 
 // Run 接受用户连接并与工作连接配对
@@ -66,6 +90,19 @@ func (p *TCPProxy) Run() {
 		}
 
 		logger.Info("[Proxy:%s] 新用户连接: %s", p.Name, userConn.RemoteAddr())
+
+		// ACL 过滤
+		if p.acl != nil && !p.acl.Allow(userConn.RemoteAddr().String()) {
+			p.RejectedACL.Add(1)
+			logger.Warn("[Proxy:%s] ACL 拒绝: %s", p.Name, userConn.RemoteAddr())
+			userConn.Close()
+			continue
+		}
+
+		// 限速包裹
+		if p.rateLimitBps > 0 {
+			userConn = wrapConnWithRateLimit(userConn, p.rateLimitBps)
+		}
 
 		// 优先从对端全局连接池取预建连接
 		if pool := p.tunnel.getPeerPool(p.PeerConnID); pool != nil {

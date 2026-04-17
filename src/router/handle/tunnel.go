@@ -93,8 +93,14 @@ func handleNewProxy(ctx *tcp.Context) error {
 		return ctx.Error(400, "参数解析失败")
 	}
 
-	if data.Name == "" || data.RemotePort <= 0 {
-		return ctx.Error(400, "缺少必要参数: name, remote_port")
+	if data.Name == "" {
+		return ctx.Error(400, "缺少必要参数: name")
+	}
+	if data.Type != "http" && data.RemotePort <= 0 {
+		return ctx.Error(400, "缺少必要参数: remote_port")
+	}
+	if data.Type == "http" && len(data.CustomDomains) == 0 {
+		return ctx.Error(400, "type=http 需要 custom_domains")
 	}
 
 	// 检查每对端最大代理数限制
@@ -111,11 +117,24 @@ func handleNewProxy(ctx *tcp.Context) error {
 	}
 
 	ts := services.GetTunnelService()
-	if err := ts.RegisterProxy(ctx.ConnID, data.Name, data.RemotePort); err != nil {
+	opts := &services.ProxyOptions{
+		AllowCIDR: data.AllowCIDR,
+		DenyCIDR:  data.DenyCIDR,
+		RateLimit: data.RateLimit,
+	}
+	var regErr error
+	if data.Type == "udp" {
+		regErr = ts.RegisterUDPProxy(ctx.ConnID, data.Name, data.RemotePort, opts)
+	} else if data.Type == "http" {
+		regErr = ts.RegisterHTTPProxy(ctx.ConnID, data.Name, data.CustomDomains, data.HostRewrite, opts)
+	} else {
+		regErr = ts.RegisterProxy(ctx.ConnID, data.Name, data.RemotePort, opts)
+	}
+	if regErr != nil {
 		return ctx.Reply(tcp.NewProxyResp{
 			Name:  data.Name,
 			OK:    false,
-			Error: err.Error(),
+			Error: regErr.Error(),
 		})
 	}
 
