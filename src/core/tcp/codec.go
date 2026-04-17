@@ -65,7 +65,10 @@ func (c *Codec) Decode(conn gnet.Conn) (*Message, error) {
 	buf, _ := conn.Peek(totalLen)
 	payload := make([]byte, msgLen)
 	copy(payload, buf[headerLen:totalLen])
-	_, _ = conn.Discard(totalLen)
+	if _, err := conn.Discard(totalLen); err != nil {
+		// 底层缓冲区消费失败 → 协议状态已损坏，必须断连
+		return nil, fmt.Errorf("Discard底层缓冲区失败: %w", err)
+	}
 
 	// 解密（如果启用）
 	if c.crypto != nil {

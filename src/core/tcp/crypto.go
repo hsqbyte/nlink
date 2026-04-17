@@ -5,15 +5,26 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	"golang.org/x/crypto/hkdf"
 )
 
 // Crypto AES-256-GCM 加解密器
+//
+// Nonce 构造采用 "随机 prefix(8B) + 原子递增 counter(4B)" 的固定策略，
+// 保证同一 Crypto 实例生命周期内 nonce 绝不重复：
+//   - 每个实例启动时生成 8 字节随机前缀（不同实例极难碰撞）
+//   - counter 单调递增，2^32 - 1 条消息内不会回绕
+//
+// 这比纯随机 nonce 更安全，避免了高吞吐下的生日碰撞风险。
 type Crypto struct {
-	aead cipher.AEAD
+	aead    cipher.AEAD
+	prefix  [8]byte       // 随机 nonce 前缀（实例唯一）
+	counter atomic.Uint64 // 单调递增计数器
 }
 
 // NewCrypto 从 token 派生 AES-256 密钥，创建加解密器
@@ -35,16 +46,32 @@ func NewCrypto(token string) (*Crypto, error) {
 		return nil, fmt.Errorf("GCM初始化失败: %w", err)
 	}
 
-	return &Crypto{aead: aead}, nil
+	cr := &Crypto{aead: aead}
+	if _, err := io.ReadFull(rand.Reader, cr.prefix[:]); err != nil {
+		return nil, fmt.Errorf("生成nonce前缀失败: %w", err)
+	}
+	return cr, nil
+}
+
+// nextNonce 生成下一个 nonce: prefix(8B) + counter(4B, 大端)
+// GCM 标准 nonce 为 12 字节，此处约束 counter 上限为 2^32。
+func (cr *Crypto) nextNonce() ([]byte, error) {
+	n := cr.counter.Add(1)
+	if n > (1<<32)-1 {
+		return nil, fmt.Errorf("nonce计数器溢出，请重建加密实例")
+	}
+	nonce := make([]byte, cr.aead.NonceSize())
+	copy(nonce[:8], cr.prefix[:])
+	binary.BigEndian.PutUint32(nonce[8:12], uint32(n))
+	return nonce, nil
 }
 
 // Encrypt 加密明文，返回 nonce + 密文
 func (cr *Crypto) Encrypt(plaintext []byte) ([]byte, error) {
-	nonce := make([]byte, cr.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, fmt.Errorf("生成nonce失败: %w", err)
+	nonce, err := cr.nextNonce()
+	if err != nil {
+		return nil, err
 	}
-	// nonce + ciphertext+tag
 	return cr.aead.Seal(nonce, nonce, plaintext, nil), nil
 }
 

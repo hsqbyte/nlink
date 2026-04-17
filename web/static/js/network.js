@@ -410,7 +410,7 @@ function renderPeerProxies(proxies) {
     const n = esc(p.name);
     h += '<div class="net-proxy-card"><div>' +
       '<div class="net-proxy-name">' + n + '</div>' +
-      '<div class="net-proxy-addr">:' + p.remote_port + ' → ' + esc(p.local_ip || '127.0.0.1') + ':' + p.local_port + '</div>' +
+      '<div class="net-proxy-addr">:' + esc(p.remote_port) + ' → ' + esc(p.local_ip || '127.0.0.1') + ':' + esc(p.local_port) + '</div>' +
     '</div>' +
     '<button class="net-proxy-del" onclick="netRemoveProxy(\'' + n + '\')" title="删除">×</button>' +
     '</div>';

@@ -2,6 +2,7 @@ package handle
 
 import (
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hsqbyte/nlink/src/core/config"
@@ -10,6 +11,22 @@ import (
 	"github.com/hsqbyte/nlink/src/router"
 	"github.com/hsqbyte/nlink/src/services"
 )
+
+// 代理名 / 节点名允许字符：字母/数字/下划线/连字符，长度 1-64
+var validIdentifier = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// validateIdentifier 校验路径参数中的标识符（代理名、节点名等），
+// 不合法时返回 400 并写响应，返回 false 告知调用方终止处理。
+func validateIdentifier(c *gin.Context, value, field string) bool {
+	if !validIdentifier.MatchString(value) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "非法的 " + field + " 格式（仅允许字母/数字/下划线/连字符，长度 1-64）",
+		})
+		return false
+	}
+	return true
+}
 
 func init() {
 	router.APIRouter.GET("/proxies", listProxies)
@@ -33,6 +50,9 @@ func init() {
 // resolvePeer 根据名称解析对端 connID
 func resolvePeer(c *gin.Context) (string, bool) {
 	name := c.Param("name")
+	if !validateIdentifier(c, name, "节点名") {
+		return "", false
+	}
 	ts := services.GetTunnelService()
 	connID, ok := ts.GetConnIDByName(name)
 	if !ok {
@@ -56,6 +76,9 @@ func listProxies(c *gin.Context) {
 // removeProxy 移除指定代理
 func removeProxy(c *gin.Context) {
 	name := c.Param("name")
+	if !validateIdentifier(c, name, "代理名") {
+		return
+	}
 	ts := services.GetTunnelService()
 	if ts.RemoveProxy(name) {
 		c.JSON(http.StatusOK, gin.H{"code": 200, "message": "代理已移除"})
@@ -266,6 +289,14 @@ func addPeerProxy(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少必要参数: name, remote_port, local_port"})
 		return
 	}
+	if !validIdentifier.MatchString(req.Name) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "非法的代理名格式（仅允许字母/数字/下划线/连字符，长度 1-64）"})
+		return
+	}
+	if req.RemotePort < 1 || req.RemotePort > 65535 || req.LocalPort < 1 || req.LocalPort > 65535 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "端口范围非法 (1-65535)"})
+		return
+	}
 	if req.LocalIP == "" {
 		req.LocalIP = "127.0.0.1"
 	}
@@ -288,6 +319,9 @@ func removePeerProxy(c *gin.Context) {
 		return
 	}
 	proxyName := c.Param("proxyName")
+	if !validateIdentifier(c, proxyName, "代理名") {
+		return
+	}
 	ts := services.GetTunnelService()
 	if err := ts.RemovePeerProxy(connID, proxyName); err != nil {
 		c.JSON(http.StatusOK, gin.H{"code": 500, "message": err.Error()})

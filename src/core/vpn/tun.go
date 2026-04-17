@@ -87,7 +87,10 @@ func (t *TunDevice) Close() error {
 	if runtime.GOOS == "darwin" {
 		_, ipNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", t.virtualIP.String(), t.cidr))
 		if err == nil {
-			_ = runCmd("route", "delete", "-net", ipNet.String())
+			if rerr := runCmd("route", "delete", "-net", ipNet.String()); rerr != nil {
+				// 非关键错误，仅记录（路由可能本就已不存在）
+				fmt.Printf("  [TUN] 清理路由失败 %s: %v\n", ipNet.String(), rerr)
+			}
 		}
 	}
 	return t.device.Close()

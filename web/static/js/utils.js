@@ -1,5 +1,11 @@
 const $ = id => document.getElementById(id);
-const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// mask 用于敏感字符串（token 等）的显示掩码：保留前后 4 位，中间用 • 代替
+const mask = s => {
+  const v = String(s == null ? '' : s);
+  if (v.length <= 8) return v ? '••••••••' : '';
+  return v.slice(0, 4) + '••••••••' + v.slice(-4);
+};
 
 function fmtB(b) {
   if (b < 1024) return b + ' B';

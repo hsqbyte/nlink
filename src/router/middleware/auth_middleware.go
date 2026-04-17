@@ -72,6 +72,8 @@ func HandleLogin(c *gin.Context) {
 	addSession(token)
 
 	secure := cfg.TLSEnabled()
+	// SameSite=Strict 可防御大部分 CSRF 攻击：跨站发起的请求不会携带此 cookie
+	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie("nlink_token", token, 86400, "/", "", secure, true)
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "登录成功"})
 }
@@ -82,6 +84,7 @@ func HandleLogout(c *gin.Context) {
 	if token != "" {
 		removeSession(token)
 	}
+	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie("nlink_token", "", -1, "/", "", false, true)
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "已登出"})
 }

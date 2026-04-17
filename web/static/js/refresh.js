@@ -71,9 +71,9 @@ function renderOverviewTable(p) {
   let h = '<table><thead><tr><th>名称</th><th>端口</th><th>活跃</th><th>总连接</th><th>连接池</th><th>按需</th><th>↓ 流量</th><th>↑ 流量</th></tr></thead><tbody>';
   p.forEach(x => {
     h += '<tr><td><strong>' + esc(x.name) + '</strong></td>';
-    h += '<td><span class="badge badge-blue">:' + x.remote_port + '</span></td>';
-    h += '<td>' + (x.active_conns ? '<span class="badge badge-green">' + x.active_conns + '</span>' : '0') + '</td>';
-    h += '<td>' + x.total_conns + '</td><td>' + x.pool_hits + '</td><td>' + x.on_demand_hits + '</td>';
+    h += '<td><span class="badge badge-blue">:' + esc(x.remote_port) + '</span></td>';
+    h += '<td>' + (x.active_conns ? '<span class="badge badge-green">' + esc(x.active_conns) + '</span>' : '0') + '</td>';
+    h += '<td>' + esc(x.total_conns) + '</td><td>' + esc(x.pool_hits) + '</td><td>' + esc(x.on_demand_hits) + '</td>';
     h += '<td>' + fmtB(x.bytes_in) + '</td><td>' + fmtB(x.bytes_out) + '</td></tr>';
   });
   el.innerHTML = h + '</tbody></table>';
@@ -86,9 +86,9 @@ function renderProxyMgmt(p) {
   p.forEach(x => {
     const n = esc(x.name);
     h += '<tr><td><strong>' + n + '</strong></td>';
-    h += '<td><span class="badge badge-blue">:' + x.remote_port + '</span></td>';
+    h += '<td><span class="badge badge-blue">:' + esc(x.remote_port) + '</span></td>';
     h += '<td>' + esc(x.peer_name || x.peer_conn_id) + '</td>';
-    h += '<td>' + (x.active_conns ? '<span class="badge badge-green">' + x.active_conns + ' 活跃</span>' : '<span class="badge">空闲</span>') + '</td>';
+    h += '<td>' + (x.active_conns ? '<span class="badge badge-green">' + esc(x.active_conns) + ' 活跃</span>' : '<span class="badge">空闲</span>') + '</td>';
     h += '<td><button class="btn btn-red" onclick="removeProxy(this,\'' + n + '\')"><span class="spinner"></span><span class="btn-text">删除</span></button></td></tr>';
   });
   el.innerHTML = h + '</tbody></table>';

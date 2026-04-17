@@ -5,10 +5,12 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fastgox/utils/logger"
@@ -23,10 +25,15 @@ type UDPPeer struct {
 }
 
 // UDPTransport UDP 加密传输层
+//
+// nonce 构造: 8 字节随机前缀(实例级) + 4 字节原子 counter，
+// 保证同实例 nonce 绝不重复，避免高丢包重传下的生日碰撞。
 type UDPTransport struct {
-	conn  *net.UDPConn
-	aead  cipher.AEAD
-	peers sync.Map // virtualIP(string) -> *UDPPeer
+	conn    *net.UDPConn
+	aead    cipher.AEAD
+	peers   sync.Map // virtualIP(string) -> *UDPPeer
+	prefix  [8]byte
+	counter atomic.Uint64
 
 	localIP net.IP // 本节点虚拟 IP
 }
@@ -56,11 +63,16 @@ func NewUDPTransport(listenPort int, token string, localVirtualIP net.IP) (*UDPT
 		return nil, fmt.Errorf("UDP监听 :%d 失败: %w", listenPort, err)
 	}
 
-	return &UDPTransport{
+	t := &UDPTransport{
 		conn:    conn,
 		aead:    aead,
 		localIP: localVirtualIP,
-	}, nil
+	}
+	if _, err := io.ReadFull(rand.Reader, t.prefix[:]); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("生成nonce前缀失败: %w", err)
+	}
+	return t, nil
 }
 
 // AddPeer 注册一个对端节点
@@ -147,11 +159,15 @@ func (t *UDPTransport) Conn() *net.UDPConn {
 }
 
 // encrypt 使用 AES-256-GCM 加密，返回 nonce + ciphertext
+// nonce = prefix(8B) + counter(4B)，保证同实例不重复
 func (t *UDPTransport) encrypt(plaintext []byte) ([]byte, error) {
-	nonce := make([]byte, t.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, err
+	n := t.counter.Add(1)
+	if n > (1<<32)-1 {
+		return nil, fmt.Errorf("nonce计数器溢出")
 	}
+	nonce := make([]byte, t.aead.NonceSize())
+	copy(nonce[:8], t.prefix[:])
+	binary.BigEndian.PutUint32(nonce[8:12], uint32(n))
 	return t.aead.Seal(nonce, nonce, plaintext, nil), nil
 }
 

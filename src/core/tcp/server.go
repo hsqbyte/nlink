@@ -62,12 +62,16 @@ type Server struct {
 	eng              gnet.Engine
 	options          []gnet.Option
 	heartbeatTimeout time.Duration // 心跳超时，0表示不启用
+	maxConnections   int64         // 最大连接数，<=0 表示不限制
 
 	// OnConnect 新连接回调
 	OnConnect func(connID string, conn gnet.Conn)
 	// OnDisconnect 断连回调
 	OnDisconnect func(connID string)
 }
+
+// DefaultMaxConnections 默认最大连接数（防止被海量连接耗尽资源）
+const DefaultMaxConnections = 10000
 
 // NewServer 创建TCP服务器
 func NewServer(port int, maxMessageSize int, heartbeatTimeout int, router *Router, opts ...gnet.Option) *Server {
@@ -78,7 +82,13 @@ func NewServer(port int, maxMessageSize int, heartbeatTimeout int, router *Route
 		router:           router,
 		options:          opts,
 		heartbeatTimeout: time.Duration(heartbeatTimeout) * time.Second,
+		maxConnections:   DefaultMaxConnections,
 	}
+}
+
+// SetMaxConnections 设置最大连接数，<=0 表示不限制
+func (s *Server) SetMaxConnections(n int64) {
+	s.maxConnections = n
 }
 
 // ConnManager 获取连接管理器
@@ -112,6 +122,11 @@ func (s *Server) OnBoot(eng gnet.Engine) gnet.Action {
 }
 
 func (s *Server) OnOpen(c gnet.Conn) ([]byte, gnet.Action) {
+	// 连接数限流
+	if s.maxConnections > 0 && s.conns.Count() >= s.maxConnections {
+		logger.Warn("[TCP] 拒绝连接: 已达最大连接数 %d (remote=%s)", s.maxConnections, c.RemoteAddr())
+		return nil, gnet.Close
+	}
 	connID := s.conns.Add(c)
 	if s.heartbeatTimeout > 0 {
 		c.SetDeadline(time.Now().Add(s.heartbeatTimeout))

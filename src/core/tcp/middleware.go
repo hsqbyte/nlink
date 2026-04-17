@@ -23,7 +23,9 @@ func Recovery() Middleware {
 				if r := recover(); r != nil {
 					logger.Error("[TCP Recovery] connID=%s cmd=%s panic: %v\n%s",
 						ctx.ConnID, ctx.Msg.Cmd, r, debug.Stack())
-					_ = ctx.Error(500, fmt.Sprintf("内部错误: %v", r))
+					if err := ctx.Error(500, fmt.Sprintf("内部错误: %v", r)); err != nil {
+						logger.Error("[TCP Recovery] 发送错误响应失败: connID=%s err=%v", ctx.ConnID, err)
+					}
 				}
 			}()
 			return next(ctx)
