@@ -3,6 +3,7 @@ package handle
 import (
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hsqbyte/nlink/src/core/config"
@@ -35,6 +36,7 @@ func init() {
 	router.APIRouter.DELETE("/peers/:name", kickPeer)
 	router.APIRouter.GET("/status", serverStatus)
 	router.APIRouter.GET("/stats", serverStats)
+	router.APIRouter.GET("/stats/history", serverStatsHistory)
 	router.APIRouter.GET("/node/config", getNodeConfig)
 	router.APIRouter.PUT("/node/config", updateNodeConfig)
 
@@ -388,4 +390,21 @@ func forwardPeerCmd(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": resp.Code, "message": resp.Message, "data": resp.Data})
+}
+
+// serverStatsHistory 返回统计历史（用于 Dashboard 曲线）
+// query param: limit（可选，默认全部，最大 1440）
+func serverStatsHistory(c *gin.Context) {
+	h := services.GetStatsHistory()
+	if h == nil {
+		c.JSON(http.StatusOK, gin.H{"code": 200, "data": []interface{}{}})
+		return
+	}
+	limit := 0
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": h.Snapshot(limit)})
 }

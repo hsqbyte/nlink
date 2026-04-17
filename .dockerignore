@@ -1,0 +1,15 @@
+# 忽略构建上下文中不必要的文件，加速 docker build
+bin/
+data/
+dist/
+doc/
+docs/
+.git/
+.github/
+.idea/
+.vscode/
+*.log
+*.tmp
+.DS_Store
+coverage.out
+node_modules/

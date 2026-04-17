@@ -1,0 +1,85 @@
+/* Dark theme overrides
+   Activated by data-theme="dark" on <html>.
+   Variables mirror base.css but with dark palette. */
+
+:root[data-theme="dark"] {
+  --bg: #0a0a0c;
+  --glass: rgba(28, 28, 30, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --shadow: 0 2px 20px rgba(0, 0, 0, 0.4);
+  --text: #f2f2f7;
+  --text2: #8e8e93;
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --red: #ff453a;
+  --red-hover: #ff6961;
+  --green: #32d74b;
+  --orange: #ff9f0a;
+}
+
+/* nav 背景（base.css 中写死了 rgba(245,245,247,...)）*/
+:root[data-theme="dark"] .nav {
+  background: rgba(10, 10, 12, 0.72);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 常见 hover/边框 */
+:root[data-theme="dark"] .refresh-bar:hover,
+:root[data-theme="dark"] .tab:hover,
+:root[data-theme="dark"] .btn-ghost {
+  background: rgba(255, 255, 255, 0.06);
+}
+:root[data-theme="dark"] .btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+:root[data-theme="dark"] .refresh-ring .bg {
+  stroke: rgba(255, 255, 255, 0.12);
+}
+
+/* 表格边框 */
+:root[data-theme="dark"] th {
+  border-bottom-color: rgba(255, 255, 255, 0.12) !important;
+}
+:root[data-theme="dark"] td {
+  border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* input 背景 */
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* overlay 遮罩深色化 */
+:root[data-theme="dark"] .overlay {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+/* vis-network 画布背景（拓扑图）*/
+:root[data-theme="dark"] .net-stage,
+:root[data-theme="dark"] .vis-network canvas {
+  background: #000 !important;
+}
+
+/* theme toggle 按钮 */
+.theme-toggle {
+  background: transparent;
+  border: 0.5px solid rgba(0, 0, 0, 0.2);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  transition: background .2s;
+  margin-right: 8px;
+}
+.theme-toggle:hover { background: rgba(0, 0, 0, 0.04); }
+:root[data-theme="dark"] .theme-toggle {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+:root[data-theme="dark"] .theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}

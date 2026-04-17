@@ -3,15 +3,37 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
+      args:
+        VERSION: "${NLINK_VERSION:-dev}"
+    image: nlink:${NLINK_VERSION:-dev}
     container_name: nlink
     restart: unless-stopped
+    # VPN 模式需要放开下面三项（默认注释：仅 TCP 代理时无需）
+    # cap_add:
+    #   - NET_ADMIN
+    # devices:
+    #   - /dev/net/tun:/dev/net/tun
+    # sysctls:
+    #   net.ipv4.ip_forward: "1"
     ports:
-      - "7000:7000"     # TCP 控制通道
-      - "7001:7001"     # 工作连接
-      - "18080:18080"   # Dashboard
+      - "7000:7000"         # TCP 控制通道
+      - "7001:7001"         # 工作连接
+      - "18080:18080"       # Dashboard / /metrics
+      - "7200:7200/udp"     # VPN UDP（启用 VPN 时）
     volumes:
-      - ./config:/app/config
+      - ./config:/app/config:ro
       - nlink-data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18080/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
 volumes:
   nlink-data:

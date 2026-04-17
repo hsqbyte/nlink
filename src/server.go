@@ -57,6 +57,9 @@ func NewServer() (*Server, error) {
 	// 初始化隧道服务
 	services.InitTunnelService(server.TCP, lc.WorkConnTimeout)
 
+	// 启动统计历史采样（30s 采样周期，保留 1440 点 ≈ 12h）
+	services.StartStatsSampler(30*time.Second, 1440)
+
 	// 设置断连回调: 对端断线时清理代理
 	server.TCP.OnDisconnect = func(connID string) {
 		services.GetTunnelService().RemovePeerProxies(connID)

@@ -32,38 +32,45 @@ async function refresh() {
     const r = await fetch('/api/v1/stats');
     const j = await r.json();
     if (j.code !== 200) return;
-    const s = j.data.server, p = j.data.proxies || [];
-    $('nav-uptime').textContent = fmtUp(s.uptime);
-    $('s-uptime').textContent = fmtUp(s.uptime);
-    $('s-clients').textContent = s.peer_count;
-    $('s-proxies').textContent = s.proxy_count;
-    $('s-active').textContent = s.active_conns;
-    $('s-total').textContent = '共 ' + s.total_conns + ' 次';
-    $('s-in').textContent = fmtB(s.bytes_in);
-    $('s-out').textContent = fmtB(s.bytes_out);
-    // VPN 信息
-    const vpn = j.data.vpn;
-    if (vpn && vpn.enabled) {
-      $('vpn-card').style.display = '';
-      $('s-vpn-ip').textContent = vpn.virtual_ip;
-      let portInfo = 'UDP :' + vpn.listen_port;
-      if (vpn.public_addr) portInfo += ' | 公网 ' + vpn.public_addr;
-      $('s-vpn-port').textContent = portInfo;
-      // VPN 对端列表
-      const peerEl = $('s-vpn-peers');
-      if (peerEl && vpn.peers && vpn.peers.length > 0) {
-        peerEl.textContent = vpn.peers.map(p => p.virtual_ip + ' (' + p.endpoint + ')').join(', ');
-        peerEl.style.display = '';
-      } else if (peerEl) {
-        peerEl.style.display = 'none';
-      }
-    } else {
-      $('vpn-card').style.display = 'none';
-    }
-    renderOverviewTable(p);
-    renderProxyMgmt(p);
+    applyStats(j.data);
   } catch (e) { console.error(e); }
 }
+
+// applyStats 接受 /stats 或 SSE 推送过来的数据并更新 UI
+function applyStats(data) {
+  if (!data) return;
+  const s = data.server, p = data.proxies || [];
+  $('nav-uptime').textContent = fmtUp(s.uptime);
+  $('s-uptime').textContent = fmtUp(s.uptime);
+  $('s-clients').textContent = s.peer_count;
+  $('s-proxies').textContent = s.proxy_count;
+  $('s-active').textContent = s.active_conns;
+  $('s-total').textContent = '共 ' + s.total_conns + ' 次';
+  $('s-in').textContent = fmtB(s.bytes_in);
+  $('s-out').textContent = fmtB(s.bytes_out);
+  // VPN 信息
+  const vpn = data.vpn;
+  if (vpn && vpn.enabled) {
+    $('vpn-card').style.display = '';
+    $('s-vpn-ip').textContent = vpn.virtual_ip;
+    let portInfo = 'UDP :' + vpn.listen_port;
+    if (vpn.public_addr) portInfo += ' | 公网 ' + vpn.public_addr;
+    if ($('s-vpn-port')) $('s-vpn-port').textContent = portInfo;
+    // VPN 对端列表
+    const peerEl = $('s-vpn-peers');
+    if (peerEl && vpn.peers && vpn.peers.length > 0) {
+      peerEl.textContent = vpn.peers.map(p => p.virtual_ip + ' (' + p.endpoint + ')').join(', ');
+      peerEl.style.display = '';
+    } else if (peerEl) {
+      peerEl.style.display = 'none';
+    }
+  } else {
+    $('vpn-card').style.display = 'none';
+  }
+  renderOverviewTable(p);
+  renderProxyMgmt(p);
+}
+window.applyStats = applyStats;
 
 function renderOverviewTable(p) {
   const el = $('overview-table');
