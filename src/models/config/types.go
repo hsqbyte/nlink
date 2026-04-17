@@ -2,11 +2,12 @@ package config
 
 // NodeConfig 节点配置
 type NodeConfig struct {
-	Name      string           `yaml:"name"`      // 节点名称（唯一标识）
-	Token     string           `yaml:"token"`     // 认证令牌
-	Listen    *ListenConfig    `yaml:"listen"`    // 监听配置（可选）
-	Dashboard *DashboardConfig `yaml:"dashboard"` // 管理面板配置（可选）
-	VPN       *VPNConfig       `yaml:"vpn"`       // 虚拟局域网配置（可选）
+	Name      string           `yaml:"name"`       // 节点名称（唯一标识）
+	Token     string           `yaml:"token"`      // 认证令牌
+	TokenPrev string           `yaml:"token_prev"` // 上一版令牌（轮换过渡期使用，可选）
+	Listen    *ListenConfig    `yaml:"listen"`     // 监听配置（可选）
+	Dashboard *DashboardConfig `yaml:"dashboard"`  // 管理面板配置（可选）
+	VPN       *VPNConfig       `yaml:"vpn"`        // 虚拟局域网配置（可选）
 }
 
 // ListenConfig 监听配置

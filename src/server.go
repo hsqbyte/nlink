@@ -44,6 +44,12 @@ func NewServer() (*Server, error) {
 		if err != nil {
 			return nil, fmt.Errorf("加密初始化失败: %w", err)
 		}
+		if cfg.Node.TokenPrev != "" {
+			if err := cr.AddFallbackKey(cfg.Node.TokenPrev); err != nil {
+				return nil, fmt.Errorf("旧密钥加载失败: %w", err)
+			}
+			logger.Info("Token 轮换模式：已加载 token_prev，过渡期内兼容旧客户端")
+		}
 		server.TCP.Codec().SetCrypto(cr)
 		logger.Info("控制通道加密已启用 (AES-256-GCM)")
 	}

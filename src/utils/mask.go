@@ -1,4 +1,3 @@
-package utils
 // Package utils 提供通用辅助函数。
 package utils
 

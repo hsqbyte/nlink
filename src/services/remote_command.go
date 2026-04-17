@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/hsqbyte/nlink/src/core/tcp"
@@ -209,8 +210,16 @@ func (ts *TunnelService) probeAllPeers() {
 	}
 	ts.mu.RUnlock()
 
+	// 并发度限制：避免 peer 数量激增时一次性创建过多 goroutine
+	const maxConcurrent = 32
+	sem := make(chan struct{}, maxConcurrent)
+	var wg sync.WaitGroup
 	for _, connID := range connIDs {
+		wg.Add(1)
+		sem <- struct{}{}
 		go func(cid string) {
+			defer wg.Done()
+			defer func() { <-sem }()
 			start := time.Now()
 			resp, err := ts.SendCommandToPeer(cid, "ping_latency", nil)
 			if err != nil {
@@ -222,4 +231,5 @@ func (ts *TunnelService) probeAllPeers() {
 			}
 		}(connID)
 	}
+	wg.Wait()
 }

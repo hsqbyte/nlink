@@ -59,7 +59,13 @@ func handleAuth(ctx *tcp.Context) error {
 	}
 
 	expected := config.GlobalConfig.Node.Token
-	if subtle.ConstantTimeCompare([]byte(data.Token), []byte(expected)) != 1 {
+	expectedPrev := config.GlobalConfig.Node.TokenPrev
+	// 常量时间比较；支持过渡期双 token
+	ok := subtle.ConstantTimeCompare([]byte(data.Token), []byte(expected)) == 1
+	if !ok && expectedPrev != "" {
+		ok = subtle.ConstantTimeCompare([]byte(data.Token), []byte(expectedPrev)) == 1
+	}
+	if !ok {
 		return ctx.Error(401, "认证失败: token无效")
 	}
 

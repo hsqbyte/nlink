@@ -24,6 +24,8 @@ func init() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	// /metrics 由 handle 包在 init 中注册到 Engine（不走 APIRouter 认证）
+
 	// 登录/登出（不需要认证）
 	Engine.POST("/api/v1/login", middleware.HandleLogin)
 	Engine.POST("/api/v1/logout", middleware.HandleLogout)

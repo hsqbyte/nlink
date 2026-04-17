@@ -98,3 +98,39 @@ func TestPrefixUniquePerInstance(t *testing.T) {
 		t.Fatal("两个实例的 nonce 前缀居然相同，随机源可能异常")
 	}
 }
+
+// TestFallbackDecrypt 验证 token 轮换过渡期：旧 token 加密的数据可被带 fallback 的新 Crypto 解密
+func TestFallbackDecrypt(t *testing.T) {
+	// 旧版：客户端还在用 token_prev 加密
+	oldCr, err := NewCrypto("old-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := []byte("legacy client payload")
+	ct, err := oldCr.Encrypt(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 新服务端：token=new，token_prev=old
+	newCr, err := NewCrypto("new-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := newCr.AddFallbackKey("old-token"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := newCr.Decrypt(ct)
+	if err != nil {
+		t.Fatalf("fallback decrypt 失败: %v", err)
+	}
+	if !bytes.Equal(got, msg) {
+		t.Fatalf("fallback 解密结果不匹配: %q", got)
+	}
+
+	// 没有 fallback 时应失败
+	plainNew, _ := NewCrypto("new-token")
+	if _, err := plainNew.Decrypt(ct); err == nil {
+		t.Fatal("没有 fallback 的实例本应解密失败")
+	}
+}
