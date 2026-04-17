@@ -132,7 +132,25 @@ func main() {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	reload := make(chan os.Signal, 1)
+	signal.Notify(reload, syscall.SIGHUP)
+
+loop:
+	for {
+		select {
+		case <-quit:
+			break loop
+		case <-reload:
+			logger.Info("收到 SIGHUP，尝试热重载配置: %s", *cfgFile)
+			newCfg, err := config.ReloadConfig(*cfgFile)
+			if err != nil {
+				logger.Error("热重载失败: %v", err)
+				continue
+			}
+			config.ApplyReload(newCfg)
+			logger.Info("热重载完成 (Note: 仅 token/token_prev 实时生效，其他字段需重启)")
+		}
+	}
 
 	logger.Info("正在关闭服务...")
 	if vpnEngine != nil {

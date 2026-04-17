@@ -43,10 +43,14 @@ func init() {
 	// 远程管理对端
 	router.APIRouter.GET("/peers/:name/config", getPeerConfig)
 	router.APIRouter.POST("/peers/:name/proxies", addPeerProxy)
+	router.APIRouter.PUT("/peers/:name/proxies/:proxyName", updatePeerProxy)
 	router.APIRouter.DELETE("/peers/:name/proxies/:proxyName", removePeerProxy)
 	router.APIRouter.PUT("/peers/:name/pool", updatePeerPool)
 	router.APIRouter.GET("/peers/:name/peers", getPeerPeers)
 	router.APIRouter.POST("/peers/:name/forward", forwardPeerCmd)
+
+	// VPN 运行时策略
+	router.APIRouter.PUT("/vpn/peers/:vip/policy", updateVPNPeerPolicy)
 }
 
 // resolvePeer 根据名称解析对端 connID
@@ -353,6 +357,54 @@ func removePeerProxy(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "代理已删除"})
 }
 
+// updatePeerProxy 远程更新对端代理（等价于 remove + add，保持原名）
+func updatePeerProxy(c *gin.Context) {
+	connID, ok := resolvePeer(c)
+	if !ok {
+		return
+	}
+	proxyName := c.Param("proxyName")
+	if !validateIdentifier(c, proxyName, "代理名") {
+		return
+	}
+	var req tcp.AddProxyData
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+	// 强制使用 URL 上的 name，忽略 body 里的 name 字段
+	req.Name = proxyName
+	if req.LocalPort <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少必要参数: local_port"})
+		return
+	}
+	if req.Type != "http" && req.RemotePort <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少必要参数: remote_port"})
+		return
+	}
+	if req.Type != "http" && (req.RemotePort < 1 || req.RemotePort > 65535) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "端口范围非法 (1-65535)"})
+		return
+	}
+	if req.LocalPort < 1 || req.LocalPort > 65535 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "端口范围非法 (1-65535)"})
+		return
+	}
+	if req.LocalIP == "" {
+		req.LocalIP = "127.0.0.1"
+	}
+	if req.Type == "" {
+		req.Type = "tcp"
+	}
+
+	ts := services.GetTunnelService()
+	if err := ts.UpdatePeerProxy(connID, &req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "代理已更新"})
+}
+
 // updatePeerPool 远程修改对端连接池
 func updatePeerPool(c *gin.Context) {
 	connID, ok := resolvePeer(c)
@@ -428,4 +480,49 @@ func serverStatsHistory(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": h.Snapshot(limit)})
+}
+
+// updateVPNPeerPolicy 运行时更新 VPN 对端的路由 / ACL
+// PUT /api/v1/vpn/peers/:vip/policy  body: { endpoint?, routes?:[], allow_cidr?:[], deny_cidr?:[] }
+func updateVPNPeerPolicy(c *gin.Context) {
+	vip := c.Param("vip")
+	if vip == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "缺少 vip 参数"})
+		return
+	}
+	var req struct {
+		Endpoint  string   `json:"endpoint"`
+		Routes    []string `json:"routes"`
+		AllowCIDR []string `json:"allow_cidr"`
+		DenyCIDR  []string `json:"deny_cidr"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+	engine := vpn.GetGlobalEngine()
+	if engine == nil {
+		c.JSON(http.StatusOK, gin.H{"code": 500, "message": "VPN 未启用"})
+		return
+	}
+	// 如果未提供 endpoint，从现有 peer 获取
+	endpoint := req.Endpoint
+	if endpoint == "" {
+		peers := engine.Transport().ListPeers()
+		for _, p := range peers {
+			if p.VirtualIP.String() == vip {
+				endpoint = p.Endpoint.String()
+				break
+			}
+		}
+	}
+	if endpoint == "" {
+		c.JSON(http.StatusOK, gin.H{"code": 404, "message": "未找到该 VPN 对端"})
+		return
+	}
+	if err := engine.AddPeerWithPolicy(vip, endpoint, req.Routes, req.AllowCIDR, req.DenyCIDR); err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "VPN 对端策略已更新"})
 }

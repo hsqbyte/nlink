@@ -159,6 +159,17 @@ func (ts *TunnelService) RemovePeerProxy(connID string, name string) error {
 	return nil
 }
 
+// UpdatePeerProxy 远程更新对端代理：先 remove 再 add，失败不做自动回滚（返回错误给调用方）
+func (ts *TunnelService) UpdatePeerProxy(connID string, data *tcp.AddProxyData) error {
+	if err := ts.RemovePeerProxy(connID, data.Name); err != nil {
+		return fmt.Errorf("移除旧代理失败: %w", err)
+	}
+	if err := ts.AddPeerProxy(connID, data); err != nil {
+		return fmt.Errorf("添加新代理失败: %w", err)
+	}
+	return nil
+}
+
 // UpdatePeerPool 远程修改对端连接池
 func (ts *TunnelService) UpdatePeerPool(connID string, poolCount int) error {
 	resp, err := ts.SendCommandToPeer(connID, "update_pool", &tcp.UpdatePoolData{PoolCount: poolCount})

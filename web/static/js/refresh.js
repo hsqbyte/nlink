@@ -59,7 +59,17 @@ function applyStats(data) {
     // VPN 对端列表
     const peerEl = $('s-vpn-peers');
     if (peerEl && vpn.peers && vpn.peers.length > 0) {
-      peerEl.textContent = vpn.peers.map(p => p.virtual_ip + ' (' + p.endpoint + ')').join(', ');
+      peerEl.innerHTML = vpn.peers.map(p => {
+        const routes = (p.routes && p.routes.length) ? ' routes=' + p.routes.length : '';
+        const rtt = (p.rtt_ms && p.rtt_ms > 0) ? ' rtt=' + p.rtt_ms.toFixed(1) + 'ms' : '';
+        const rx = p.rx_bytes ? ' ↓' + fmtB(p.rx_bytes) : '';
+        const tx = p.tx_bytes ? ' ↑' + fmtB(p.tx_bytes) : '';
+        const safe = JSON.stringify(p).replace(/"/g,'&quot;');
+        return '<div class="vpn-peer-row" style="display:flex;align-items:center;gap:8px;padding:4px 0">' +
+               '<span style="flex:1">' + esc(p.virtual_ip) + ' <span style="opacity:.6">(' + esc(p.endpoint) + ')' + routes + rtt + rx + tx + '</span></span>' +
+               '<button class="btn btn-ghost" style="font-size:11px;padding:2px 8px" onclick="vpnEditPeerPolicy(' + safe + ')">编辑策略</button>' +
+               '</div>';
+      }).join('');
       peerEl.style.display = '';
     } else if (peerEl) {
       peerEl.style.display = 'none';
@@ -111,3 +121,32 @@ async function removeProxy(btn, name) {
     const j = await r.json(); toast(j.message, j.code === 200); refresh();
   } finally { btnLoading(btn, false); }
 }
+
+// 编辑 VPN 对端路由 / ACL 策略
+async function vpnEditPeerPolicy(p) {
+  const vip = p.virtual_ip;
+  const curRoutes = (p.routes || []).join(',');
+  const routes = prompt('对端 ' + vip + ' 的路由 CIDR（逗号分隔，留空清除）:', curRoutes);
+  if (routes === null) return;
+  const allow = prompt('允许 CIDR（逗号分隔，留空清除）:', '');
+  if (allow === null) return;
+  const deny = prompt('拒绝 CIDR（逗号分隔，留空清除）:', '');
+  if (deny === null) return;
+  const splitList = s => s ? s.split(',').map(x => x.trim()).filter(Boolean) : [];
+  try {
+    const r = await fetch('/api/v1/vpn/peers/' + encodeURIComponent(vip) + '/policy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: p.endpoint,
+        routes: splitList(routes),
+        allow_cidr: splitList(allow),
+        deny_cidr: splitList(deny),
+      }),
+    });
+    const j = await r.json();
+    toast(j.message, j.code === 200);
+    if (j.code === 200) refresh();
+  } catch (e) { toast('操作失败: ' + e, false); }
+}
+window.vpnEditPeerPolicy = vpnEditPeerPolicy;

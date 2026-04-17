@@ -422,6 +422,7 @@ function renderPeerProxies(proxies) {
       '<div class="net-proxy-addr">' + addr + '</div>' +
       ext +
     '</div>' +
+    '<button class="net-proxy-edit" onclick="netEditProxy(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')" title="编辑" style="background:transparent;border:0;color:var(--muted,#888);cursor:pointer;font-size:16px;padding:0 6px">✎</button>' +
     '<button class="net-proxy-del" onclick="netRemoveProxy(\'' + n + '\')" title="删除">×</button>' +
     '</div>';
   });
@@ -528,6 +529,82 @@ async function netRemoveProxy(name) {
     toast(j.message, j.code === 200);
     if (j.code === 200) { await loadNetDetail(netSelectedId); refresh(); }
   } catch (e) { toast('操作失败', false); }
+}
+
+// 编辑代理：弹出表单预填，提交走 PUT
+async function netEditProxy(p) {
+  const nd = netNodeData[netSelectedId];
+  if (!nd) return;
+  // 确保表单存在 & 展开
+  const f = $('net-add-form');
+  if (f && !f.classList.contains('show')) f.classList.add('show');
+  // 预填字段
+  if ($('net-ap-name')) { $('net-ap-name').value = p.name || ''; $('net-ap-name').disabled = true; }
+  if ($('net-ap-type')) $('net-ap-type').value = p.type || 'tcp';
+  netOnTypeChange();
+  if ($('net-ap-rp')) $('net-ap-rp').value = p.remote_port || '';
+  if ($('net-ap-lip')) $('net-ap-lip').value = p.local_ip || '127.0.0.1';
+  if ($('net-ap-lp')) $('net-ap-lp').value = p.local_port || '';
+  if ($('net-ap-domains')) $('net-ap-domains').value = (p.custom_domains || []).join(',');
+  if ($('net-ap-allow')) $('net-ap-allow').value = (p.allow_cidr || []).join(',');
+  if ($('net-ap-deny')) $('net-ap-deny').value = (p.deny_cidr || []).join(',');
+  if ($('net-ap-rate')) $('net-ap-rate').value = p.rate_limit || 0;
+  // 把提交按钮切换为"更新"模式
+  const btns = f ? f.querySelectorAll('.net-add-form-actions .btn-blue') : [];
+  btns.forEach(b => {
+    b.setAttribute('data-edit-name', p.name);
+    b.onclick = () => netSubmitEditProxy(b);
+    const tx = b.querySelector('.btn-text'); if (tx) tx.textContent = '更新';
+  });
+}
+
+async function netSubmitEditProxy(btn) {
+  const editName = btn.getAttribute('data-edit-name');
+  if (!editName) return;
+  const type = $('net-ap-type').value;
+  const rp = parseInt($('net-ap-rp').value) || 0;
+  const lip = $('net-ap-lip').value.trim() || '127.0.0.1';
+  const lp = parseInt($('net-ap-lp').value);
+  const domainsStr = ($('net-ap-domains') && $('net-ap-domains').value || '').trim();
+  const allowStr = ($('net-ap-allow') && $('net-ap-allow').value || '').trim();
+  const denyStr = ($('net-ap-deny') && $('net-ap-deny').value || '').trim();
+  const rate = parseInt($('net-ap-rate').value) || 0;
+  const splitList = s => s ? s.split(',').map(x => x.trim()).filter(Boolean) : [];
+  if (!lp) { toast('请填写完整', 'warn'); return; }
+  if (type === 'http') {
+    if (!domainsStr) { toast('type=http 需要 custom_domains', 'warn'); return; }
+  } else if (!rp) { toast('请填写远程端口', 'warn'); return; }
+
+  const nd = netNodeData[netSelectedId];
+  if (!nd) return;
+  btnLoading(btn, true);
+  try {
+    const data = { name: editName, type, remote_port: rp, local_ip: lip, local_port: lp };
+    if (type === 'http') data.custom_domains = splitList(domainsStr);
+    if (allowStr) data.allow_cidr = splitList(allowStr);
+    if (denyStr) data.deny_cidr = splitList(denyStr);
+    if (rate > 0) data.rate_limit = rate;
+    let j;
+    if (!nd.gateway) {
+      const r = await fetch('/api/v1/peers/' + encodeURIComponent(netSelectedId) + '/proxies/' + encodeURIComponent(editName),
+        { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      j = await r.json();
+    } else {
+      // 网关路径：没有 update_proxy 命令，回退为 remove + add
+      const rj = await netForwardAPI(nd.gateway, netSelectedId, nd.path, 'remove_proxy', { name: editName });
+      if (rj.code !== 200) { toast(rj.message || '删除旧代理失败', false); btnLoading(btn, false); return; }
+      j = await netForwardAPI(nd.gateway, netSelectedId, nd.path, 'add_proxy', data);
+    }
+    toast(j.message, j.code === 200);
+    if (j.code === 200) {
+      // 恢复按钮为 "确定" 模式
+      btn.removeAttribute('data-edit-name');
+      btn.onclick = () => netSubmitAddProxy(btn);
+      const tx = btn.querySelector('.btn-text'); if (tx) tx.textContent = '确定';
+      if ($('net-ap-name')) $('net-ap-name').disabled = false;
+      await loadNetDetail(netSelectedId); refresh();
+    }
+  } finally { btnLoading(btn, false); }
 }
 
 async function netUpdatePool(btn) {
