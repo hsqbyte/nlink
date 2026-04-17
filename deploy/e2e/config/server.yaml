@@ -1,0 +1,18 @@
+node:
+  name: "e2e-server"
+  token: "e2e-secret"
+  listen:
+    port: 7000
+    max_message_size: 65536
+    heartbeat_timeout: 90
+    max_proxies_per_peer: 10
+    work_conn_timeout: 10
+    pool_count: 2
+  dashboard:
+    enabled: true
+    port: 18080
+    shutdown_timeout: 10
+    username: "admin"
+    password: "admin"
+  vpn:
+    enabled: false

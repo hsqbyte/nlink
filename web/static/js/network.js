@@ -408,9 +408,19 @@ function renderPeerProxies(proxies) {
   let h = '<div class="net-proxy-list">';
   proxies.forEach(p => {
     const n = esc(p.name);
+    const typeTag = p.type ? '<span class="badge" style="margin-left:6px;font-size:11px;opacity:.7">' + esc(p.type) + '</span>' : '';
+    const addr = p.type === 'http'
+      ? (p.custom_domains ? (p.custom_domains.join(',') + ' → ' + (p.local_ip || '127.0.0.1') + ':' + p.local_port) : ('vhost → ' + (p.local_ip || '127.0.0.1') + ':' + p.local_port))
+      : (':' + esc(p.remote_port) + ' → ' + esc(p.local_ip || '127.0.0.1') + ':' + esc(p.local_port));
+    const extras = [];
+    if (p.rate_limit) extras.push('rate=' + p.rate_limit + 'B/s');
+    if (p.allow_cidr && p.allow_cidr.length) extras.push('allow=' + p.allow_cidr.length);
+    if (p.deny_cidr && p.deny_cidr.length) extras.push('deny=' + p.deny_cidr.length);
+    const ext = extras.length ? '<div class="net-proxy-addr" style="opacity:.6;font-size:11px">' + extras.join(' · ') + '</div>' : '';
     h += '<div class="net-proxy-card"><div>' +
-      '<div class="net-proxy-name">' + n + '</div>' +
-      '<div class="net-proxy-addr">:' + esc(p.remote_port) + ' → ' + esc(p.local_ip || '127.0.0.1') + ':' + esc(p.local_port) + '</div>' +
+      '<div class="net-proxy-name">' + n + typeTag + '</div>' +
+      '<div class="net-proxy-addr">' + addr + '</div>' +
+      ext +
     '</div>' +
     '<button class="net-proxy-del" onclick="netRemoveProxy(\'' + n + '\')" title="删除">×</button>' +
     '</div>';
@@ -422,14 +432,31 @@ function renderNetAddForm() {
   return '<div class="net-add-form" id="net-add-form">' +
     '<div class="form-grid">' +
       '<div class="form-item"><label>名称</label><input id="net-ap-name" type="text" placeholder="my-proxy"></div>' +
-      '<div class="form-item"><label>远程端口</label><input id="net-ap-rp" type="number" placeholder="9080"></div>' +
+      '<div class="form-item"><label>类型</label><select id="net-ap-type" onchange="netOnTypeChange()">' +
+        '<option value="tcp">TCP</option>' +
+        '<option value="udp">UDP</option>' +
+        '<option value="http">HTTP (vhost)</option>' +
+      '</select></div>' +
+      '<div class="form-item net-ap-port"><label>远程端口</label><input id="net-ap-rp" type="number" placeholder="9080"></div>' +
+      '<div class="form-item net-ap-domains" style="display:none"><label>自定义域名 (逗号分隔)</label><input id="net-ap-domains" type="text" placeholder="a.example.com,b.example.com"></div>' +
       '<div class="form-item"><label>本地IP</label><input id="net-ap-lip" type="text" value="127.0.0.1"></div>' +
       '<div class="form-item"><label>本地端口</label><input id="net-ap-lp" type="number" placeholder="8080"></div>' +
+      '<div class="form-item"><label>Allow CIDR (逗号分隔, 可选)</label><input id="net-ap-allow" type="text" placeholder="10.0.0.0/8,192.168.1.0/24"></div>' +
+      '<div class="form-item"><label>Deny CIDR (逗号分隔, 可选)</label><input id="net-ap-deny" type="text" placeholder="10.0.0.5/32"></div>' +
+      '<div class="form-item"><label>限速 bytes/sec (0=不限)</label><input id="net-ap-rate" type="number" value="0" min="0"></div>' +
     '</div>' +
     '<div class="net-add-form-actions">' +
       '<button class="btn btn-ghost" onclick="netToggleAddProxy()"><span class="btn-text">取消</span></button>' +
       '<button class="btn btn-blue" onclick="netSubmitAddProxy(this)"><span class="spinner"></span><span class="btn-text">确定</span></button>' +
     '</div></div>';
+}
+
+function netOnTypeChange() {
+  const t = document.getElementById('net-ap-type').value;
+  const port = document.querySelector('.net-ap-port');
+  const domains = document.querySelector('.net-ap-domains');
+  if (t === 'http') { if (port) port.style.display = 'none'; if (domains) domains.style.display = ''; }
+  else { if (port) port.style.display = ''; if (domains) domains.style.display = 'none'; }
 }
 
 // ---- Edge Label Builder ----
@@ -449,17 +476,30 @@ function netToggleAddProxy() {
 
 async function netSubmitAddProxy(btn) {
   const name = $('net-ap-name').value.trim();
-  const rp = parseInt($('net-ap-rp').value);
+  const type = $('net-ap-type').value;
+  const rp = parseInt($('net-ap-rp').value) || 0;
   const lip = $('net-ap-lip').value.trim() || '127.0.0.1';
   const lp = parseInt($('net-ap-lp').value);
-  if (!name || !rp || !lp) { toast('请填写完整', 'warn'); return; }
+  const domainsStr = ($('net-ap-domains') && $('net-ap-domains').value || '').trim();
+  const allowStr = ($('net-ap-allow') && $('net-ap-allow').value || '').trim();
+  const denyStr = ($('net-ap-deny') && $('net-ap-deny').value || '').trim();
+  const rate = parseInt($('net-ap-rate').value) || 0;
+  const splitList = s => s ? s.split(',').map(x => x.trim()).filter(Boolean) : [];
+  if (!name || !lp) { toast('请填写完整', 'warn'); return; }
+  if (type === 'http') {
+    if (!domainsStr) { toast('type=http 需要 custom_domains', 'warn'); return; }
+  } else if (!rp) { toast('请填写远程端口', 'warn'); return; }
 
   const nd = netNodeData[netSelectedId];
   if (!nd) return;
   btnLoading(btn, true);
   try {
     let j;
-    const data = { name, type: 'tcp', remote_port: rp, local_ip: lip, local_port: lp };
+    const data = { name, type, remote_port: rp, local_ip: lip, local_port: lp };
+    if (type === 'http') data.custom_domains = splitList(domainsStr);
+    if (allowStr) data.allow_cidr = splitList(allowStr);
+    if (denyStr) data.deny_cidr = splitList(denyStr);
+    if (rate > 0) data.rate_limit = rate;
     if (!nd.gateway) {
       const r = await fetch('/api/v1/peers/' + encodeURIComponent(netSelectedId) + '/proxies',
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });

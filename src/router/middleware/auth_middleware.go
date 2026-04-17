@@ -21,6 +21,18 @@ const sessionTTL = 24 * time.Hour
 // session 保存单个登录会话的过期时间
 type session struct {
 	expiresAt time.Time
+	username  string
+}
+
+// SessionUsername 返回 token 对应的用户名（过期或不存在返回空）
+func SessionUsername(token string) string {
+	sessionsMu.RLock()
+	defer sessionsMu.RUnlock()
+	s, ok := sessions[token]
+	if !ok || time.Now().After(s.expiresAt) {
+		return ""
+	}
+	return s.username
 }
 
 var (
@@ -80,6 +92,9 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		if u := SessionUsername(token); u != "" {
+			c.Set("user", u)
+		}
 		c.Next()
 	}
 }
@@ -131,7 +146,7 @@ func HandleLogin(c *gin.Context) {
 
 	loginLimiterReset(ip)
 	token := generateSessionToken()
-	addSession(token)
+	addSession(token, req.Username)
 
 	secure := cfg.TLSEnabled()
 	// SameSite=Strict 可防御大部分 CSRF 攻击：跨站发起的请求不会携带此 cookie
@@ -190,10 +205,10 @@ func IsValidSession(token string) bool {
 	return true
 }
 
-func addSession(token string) {
+func addSession(token, username string) {
 	sessionsMu.Lock()
 	defer sessionsMu.Unlock()
-	sessions[token] = session{expiresAt: time.Now().Add(sessionTTL)}
+	sessions[token] = session{expiresAt: time.Now().Add(sessionTTL), username: username}
 }
 
 func removeSession(token string) {

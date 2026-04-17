@@ -3,6 +3,7 @@ package vpn
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -87,6 +88,7 @@ func (e *Engine) Start() {
 	go e.tunToUDP()
 	go e.udpToTUN()
 	go e.refreshPublicAddr()
+	e.StartProbeLoop(30 * time.Second)
 }
 
 // Stop 停止 VPN 引擎
@@ -129,6 +131,51 @@ func (e *Engine) AddPeer(virtualIP string, endpoint string) error {
 	}
 
 	e.transport.AddPeer(vip, addr)
+	return nil
+}
+
+// AddPeerWithPolicy 添加对端并配置子网路由 / ACL
+func (e *Engine) AddPeerWithPolicy(virtualIP, endpoint string, routesCIDR, allowCIDR, denyCIDR []string) error {
+	vip := net.ParseIP(virtualIP)
+	if vip == nil {
+		return fmt.Errorf("无效虚拟 IP: %s", virtualIP)
+	}
+	addr, err := net.ResolveUDPAddr("udp4", endpoint)
+	if err != nil {
+		return fmt.Errorf("解析对端地址 %s 失败: %w", endpoint, err)
+	}
+	parse := func(list []string) ([]*net.IPNet, error) {
+		out := make([]*net.IPNet, 0, len(list))
+		for _, s := range list {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			// 支持单 IP：补 /32
+			if !strings.Contains(s, "/") {
+				s = s + "/32"
+			}
+			_, ipnet, err := net.ParseCIDR(s)
+			if err != nil {
+				return nil, fmt.Errorf("无效 CIDR %s: %w", s, err)
+			}
+			out = append(out, ipnet)
+		}
+		return out, nil
+	}
+	routes, err := parse(routesCIDR)
+	if err != nil {
+		return err
+	}
+	allow, err := parse(allowCIDR)
+	if err != nil {
+		return err
+	}
+	deny, err := parse(denyCIDR)
+	if err != nil {
+		return err
+	}
+	e.transport.AddPeerWithOptions(vip, addr, routes, allow, deny)
 	return nil
 }
 
@@ -218,9 +265,12 @@ func (e *Engine) tunToUDP() {
 				continue
 			}
 
-			// 只转发目标在 VPN 子网内的包
+			// 目标在 VPN 子网内 -> 直接发
+			// 否则查询路由表，看是否有对端宣告了包含该 IP 的路由
 			if !e.subnet.Contains(dstIP) {
-				continue
+				if _, ok := e.transport.LookupPeerForDst(dstIP); !ok {
+					continue
+				}
 			}
 
 			logger.Debug("[VPN] TUN->UDP: %s -> %s (%d bytes)", srcIP, dstIP, sizes[i])
@@ -258,6 +308,12 @@ func (e *Engine) udpToTUN() {
 			continue
 		}
 
+		// 控制帧（RTT 探测）：首字节 0xFE=请求，0xFF=响应
+		if n >= 1 && (buf[0] == 0xFE || buf[0] == 0xFF) {
+			e.handleProbeFrame(buf[:n], remoteAddr)
+			continue
+		}
+
 		if n >= 20 {
 			srcIP := net.IP(buf[12:16])
 			dstIP := net.IP(buf[16:20])
@@ -273,4 +329,100 @@ func (e *Engine) udpToTUN() {
 			logger.Error("[VPN] TUN 写入失败: %v", err)
 		}
 	}
+}
+
+// ---- 控制帧：RTT 探测 ----
+// 格式: [kind:1][senderVIP:4][timestampNs:8] = 13 bytes
+// kind: 0xFE = 请求；0xFF = 响应（回显 timestamp）
+
+const (
+	probeKindRequest  byte = 0xFE
+	probeKindResponse byte = 0xFF
+	probeFrameLen          = 13
+)
+
+// ProbePeer 向指定对端发送 RTT 探测请求
+func (e *Engine) ProbePeer(virtualIP string) error {
+	vip := net.ParseIP(virtualIP).To4()
+	if vip == nil {
+		return fmt.Errorf("无效虚拟 IP: %s", virtualIP)
+	}
+	peer, ok := e.transport.GetPeer(vip)
+	if !ok {
+		return fmt.Errorf("未知对端: %s", virtualIP)
+	}
+	myVIP := e.transport.localIP.To4()
+	if myVIP == nil {
+		return fmt.Errorf("本节点 VIP 无效")
+	}
+	frame := make([]byte, probeFrameLen)
+	frame[0] = probeKindRequest
+	copy(frame[1:5], myVIP)
+	ts := time.Now().UnixNano()
+	for i := 0; i < 8; i++ {
+		frame[5+i] = byte(ts >> (56 - 8*i))
+	}
+	enc, err := e.transport.encrypt(frame)
+	if err != nil {
+		return err
+	}
+	_, err = e.transport.conn.WriteToUDP(enc, peer.Endpoint)
+	return err
+}
+
+// handleProbeFrame 处理收到的探测帧
+func (e *Engine) handleProbeFrame(frame []byte, remoteAddr *net.UDPAddr) {
+	if len(frame) < probeFrameLen {
+		return
+	}
+	kind := frame[0]
+	senderVIP := net.IP(frame[1:5])
+	var ts int64
+	for i := 0; i < 8; i++ {
+		ts = (ts << 8) | int64(frame[5+i])
+	}
+
+	switch kind {
+	case probeKindRequest:
+		// 回显
+		resp := make([]byte, probeFrameLen)
+		resp[0] = probeKindResponse
+		copy(resp[1:5], senderVIP)
+		copy(resp[5:13], frame[5:13])
+		enc, err := e.transport.encrypt(resp)
+		if err != nil {
+			return
+		}
+		e.transport.conn.WriteToUDP(enc, remoteAddr)
+	case probeKindResponse:
+		rtt := time.Now().UnixNano() - ts
+		if rtt < 0 {
+			return
+		}
+		if v, ok := e.transport.peers.Load(senderVIP.String()); ok {
+			peer := v.(*UDPPeer)
+			peer.LastRTTNs.Store(rtt)
+		}
+	}
+}
+
+// StartProbeLoop 周期性对所有对端做 RTT 探测
+func (e *Engine) StartProbeLoop(interval time.Duration) {
+	go func() {
+		if interval <= 0 {
+			interval = 30 * time.Second
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-e.stopCh:
+				return
+			case <-ticker.C:
+				for _, p := range e.transport.ListPeers() {
+					_ = e.ProbePeer(p.VirtualIP.String())
+				}
+			}
+		}
+	}()
 }

@@ -1,0 +1,46 @@
+services:
+  # 服务端节点：监听控制通道 + Dashboard，并起一个 echo 后端
+  nlink-server:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: nlink:e2e
+    container_name: nlink-e2e-server
+    command: ["/app/nlink", "-c", "/app/config/server.yaml"]
+    ports:
+      - "7000:7000"
+      - "7001:7001"
+      - "18080:18080"
+      - "19999:19999"
+    volumes:
+      - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18080/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
+    networks: [nlinknet]
+
+  # 后端 TCP echo 服务（client 节点本地）
+  echo:
+    image: alpine:3.20
+    container_name: nlink-e2e-echo
+    command: ["sh", "-c", "apk add --no-cache socat && socat -v TCP-LISTEN:9999,fork,reuseaddr EXEC:'/bin/cat'"]
+    networks: [nlinknet]
+
+  # 客户端节点：连到服务端，注册一个代理把服务端 18081 映射到 echo:9999
+  nlink-client:
+    image: nlink:e2e
+    container_name: nlink-e2e-client
+    command: ["/app/nlink", "-c", "/app/config/client.yaml"]
+    depends_on:
+      nlink-server:
+        condition: service_healthy
+    volumes:
+      - ./config:/app/config:ro
+    networks: [nlinknet]
+
+networks:
+  nlinknet:
+    driver: bridge

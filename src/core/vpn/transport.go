@@ -22,6 +22,50 @@ type UDPPeer struct {
 	VirtualIP net.IP       // 对端虚拟 IP
 	Endpoint  *net.UDPAddr // 对端真实 UDP 地址
 	LastSeen  time.Time    // 最后活跃时间
+
+	// 子网路由（除 VirtualIP 外，还把这些 CIDR 的流量交给该对端）
+	Routes []*net.IPNet
+
+	// ACL：allow 非空则仅允许匹配的源/目标；deny 仅在 allow 为空时生效
+	AllowNets []*net.IPNet
+	DenyNets  []*net.IPNet
+
+	// 指标
+	RxBytes   atomic.Uint64
+	TxBytes   atomic.Uint64
+	RxPackets atomic.Uint64
+	TxPackets atomic.Uint64
+	RxDropped atomic.Uint64 // 解密失败 / ACL 拒绝
+	TxDropped atomic.Uint64
+	LastRTTNs atomic.Int64 // 最近一次探测 RTT (ns)，0 表示未知
+}
+
+// PeerACLAllowsPacket 判断 IP 包的源/目标是否被对端 ACL 允许
+// Allow 列表非空 => 源或目标必须匹配一条 allow
+// Allow 为空 & deny 非空 => 若匹配 deny 则拒绝
+func (p *UDPPeer) PeerACLAllowsPacket(src, dst net.IP) bool {
+	if len(p.AllowNets) == 0 && len(p.DenyNets) == 0 {
+		return true
+	}
+	match := func(nets []*net.IPNet, ip net.IP) bool {
+		for _, n := range nets {
+			if n.Contains(ip) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(p.AllowNets) > 0 {
+		if match(p.AllowNets, src) || match(p.AllowNets, dst) {
+			return true
+		}
+		return false
+	}
+	// allow 为空，有 deny
+	if match(p.DenyNets, src) || match(p.DenyNets, dst) {
+		return false
+	}
+	return true
 }
 
 // UDPTransport UDP 加密传输层
@@ -75,15 +119,58 @@ func NewUDPTransport(listenPort int, token string, localVirtualIP net.IP) (*UDPT
 	return t, nil
 }
 
-// AddPeer 注册一个对端节点
+// AddPeer 注册一个对端节点（保留简单版本，兼容旧代码）
 func (t *UDPTransport) AddPeer(virtualIP net.IP, endpoint *net.UDPAddr) {
+	t.AddPeerWithOptions(virtualIP, endpoint, nil, nil, nil)
+}
+
+// AddPeerWithOptions 注册对端节点并配置 routes / ACL
+func (t *UDPTransport) AddPeerWithOptions(virtualIP net.IP, endpoint *net.UDPAddr, routes, allow, deny []*net.IPNet) {
 	key := virtualIP.String()
-	t.peers.Store(key, &UDPPeer{
+	if existing, ok := t.peers.Load(key); ok {
+		// 更新现有对端的地址 + 策略，保留指标
+		p := existing.(*UDPPeer)
+		p.Endpoint = endpoint
+		p.LastSeen = time.Now()
+		p.Routes = routes
+		p.AllowNets = allow
+		p.DenyNets = deny
+		logger.Info("[VPN] 更新对端: %s -> %s (routes=%d)", key, endpoint.String(), len(routes))
+		return
+	}
+	peer := &UDPPeer{
 		VirtualIP: virtualIP,
 		Endpoint:  endpoint,
 		LastSeen:  time.Now(),
+		Routes:    routes,
+		AllowNets: allow,
+		DenyNets:  deny,
+	}
+	t.peers.Store(key, peer)
+	logger.Info("[VPN] 添加对端: %s -> %s (routes=%d allow=%d deny=%d)", key, endpoint.String(), len(routes), len(allow), len(deny))
+}
+
+// LookupPeerForDst 按目标 IP 查找对端：先看直连 VirtualIP，再遍历 routes
+func (t *UDPTransport) LookupPeerForDst(dst net.IP) (*UDPPeer, bool) {
+	if p, ok := t.GetPeer(dst); ok {
+		return p, true
+	}
+	var matched *UDPPeer
+	var matchedPrefix int = -1
+	t.peers.Range(func(_, v interface{}) bool {
+		p := v.(*UDPPeer)
+		for _, n := range p.Routes {
+			if n.Contains(dst) {
+				ones, _ := n.Mask.Size()
+				if ones > matchedPrefix {
+					matchedPrefix = ones
+					matched = p
+				}
+			}
+		}
+		return true
 	})
-	logger.Info("[VPN] 添加对端: %s -> %s", key, endpoint.String())
+	return matched, matched != nil
 }
 
 // RemovePeer 移除一个对端节点
@@ -111,19 +198,38 @@ func (t *UDPTransport) ListPeers() []*UDPPeer {
 }
 
 // SendTo 加密并发送 IP 包到指定对端
+// 支持按路由表匹配：如果 dstVirtualIP 不是任何对端的 VirtualIP，
+// 则查找 Routes 中包含该 IP 的对端。
 func (t *UDPTransport) SendTo(packet []byte, dstVirtualIP net.IP) error {
-	peer, ok := t.GetPeer(dstVirtualIP)
+	peer, ok := t.LookupPeerForDst(dstVirtualIP)
 	if !ok {
 		return fmt.Errorf("未知对端: %s", dstVirtualIP.String())
 	}
 
+	// ACL 过滤（按包的源/目标 IP）
+	if len(packet) >= 20 {
+		srcIP := net.IP(packet[12:16])
+		dstIP := net.IP(packet[16:20])
+		if !peer.PeerACLAllowsPacket(srcIP, dstIP) {
+			peer.TxDropped.Add(1)
+			return fmt.Errorf("ACL 拒绝: src=%s dst=%s peer=%s", srcIP, dstIP, peer.VirtualIP)
+		}
+	}
+
 	encrypted, err := t.encrypt(packet)
 	if err != nil {
+		peer.TxDropped.Add(1)
 		return fmt.Errorf("加密失败: %w", err)
 	}
 
-	_, err = t.conn.WriteToUDP(encrypted, peer.Endpoint)
-	return err
+	n, err := t.conn.WriteToUDP(encrypted, peer.Endpoint)
+	if err != nil {
+		peer.TxDropped.Add(1)
+		return err
+	}
+	peer.TxBytes.Add(uint64(n))
+	peer.TxPackets.Add(1)
+	return nil
 }
 
 // RecvFrom 从 UDP 接收并解密一个 IP 包，返回明文和来源地址
@@ -142,7 +248,20 @@ func (t *UDPTransport) RecvFrom(buf []byte) (int, *net.UDPAddr, error) {
 
 	copy(buf, plaintext)
 
-	// 更新对端的最后活跃时间和地址（支持漫游）
+	// 更新对端的最后活跃时间和地址（支持漫游）+ 指标 + ACL
+	if len(plaintext) >= 20 {
+		srcIP := net.IP(plaintext[12:16])
+		dstIP := net.IP(plaintext[16:20])
+		if v, ok := t.peers.Load(srcIP.String()); ok {
+			peer := v.(*UDPPeer)
+			if !peer.PeerACLAllowsPacket(srcIP, dstIP) {
+				peer.RxDropped.Add(1)
+				return 0, addr, fmt.Errorf("ACL 拒绝 src=%s dst=%s", srcIP, dstIP)
+			}
+			peer.RxBytes.Add(uint64(n))
+			peer.RxPackets.Add(1)
+		}
+	}
 	t.updatePeerEndpoint(addr, plaintext)
 
 	return len(plaintext), addr, nil

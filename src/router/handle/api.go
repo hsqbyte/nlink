@@ -155,10 +155,23 @@ func serverStats(c *gin.Context) {
 			if len(peers) > 0 {
 				peerList := make([]gin.H, 0, len(peers))
 				for _, p := range peers {
+					routes := make([]string, 0, len(p.Routes))
+					for _, n := range p.Routes {
+						routes = append(routes, n.String())
+					}
+					rttMs := float64(p.LastRTTNs.Load()) / 1e6
 					peerList = append(peerList, gin.H{
 						"virtual_ip": p.VirtualIP.String(),
 						"endpoint":   p.Endpoint.String(),
 						"last_seen":  p.LastSeen.Format("2006-01-02 15:04:05"),
+						"routes":     routes,
+						"rx_bytes":   p.RxBytes.Load(),
+						"tx_bytes":   p.TxBytes.Load(),
+						"rx_packets": p.RxPackets.Load(),
+						"tx_packets": p.TxPackets.Load(),
+						"rx_dropped": p.RxDropped.Load(),
+						"tx_dropped": p.TxDropped.Load(),
+						"rtt_ms":     rttMs,
 					})
 				}
 				vpnData["peers"] = peerList

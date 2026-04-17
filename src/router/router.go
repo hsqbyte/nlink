@@ -17,7 +17,14 @@ var (
 
 func init() {
 	Engine = gin.New()
-	Engine.Use(gin.Logger(), middleware.RecoveryMiddleware(), middleware.SecurityHeadersMiddleware(), middleware.CORSMiddleware())
+	Engine.Use(
+		middleware.RequestID(),
+		middleware.AccessLog(),
+		middleware.RecoveryMiddleware(),
+		middleware.SecurityHeadersMiddleware(),
+		middleware.CORSMiddleware(),
+		middleware.Audit(),
+	)
 
 	// 健康检查（不需要认证）
 	Engine.GET("/health", func(c *gin.Context) {

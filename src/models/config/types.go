@@ -61,13 +61,16 @@ func (d *DashboardConfig) TLSEnabled() bool {
 
 // PeerConfig 对端节点配置
 type PeerConfig struct {
-	Addr      string        `yaml:"addr"`       // 对端地址
-	Port      int           `yaml:"port"`       // 对端控制端口
-	Token     string        `yaml:"token"`      // 认证令牌
-	PoolCount int           `yaml:"pool_count"` // 预建连接数(0=禁用)
-	Proxies   []ProxyConfig `yaml:"proxies"`    // 代理列表
-	VPNPort   int           `yaml:"vpn_port"`   // 对端 VPN UDP 端口（可选）
-	VirtualIP string        `yaml:"virtual_ip"` // 对端虚拟 IP（可选）
+	Addr         string        `yaml:"addr"`           // 对端地址
+	Port         int           `yaml:"port"`           // 对端控制端口
+	Token        string        `yaml:"token"`          // 认证令牌
+	PoolCount    int           `yaml:"pool_count"`     // 预建连接数(0=禁用)
+	Proxies      []ProxyConfig `yaml:"proxies"`        // 代理列表
+	VPNPort      int           `yaml:"vpn_port"`       // 对端 VPN UDP 端口（可选）
+	VirtualIP    string        `yaml:"virtual_ip"`     // 对端虚拟 IP（可选）
+	VPNRoutes    []string      `yaml:"vpn_routes"`     // 对端宣告的子网路由 CIDR（流量路由到对端）
+	VPNAllowCIDR []string      `yaml:"vpn_allow_cidr"` // VPN 白名单 CIDR（与对端之间仅允许）
+	VPNDenyCIDR  []string      `yaml:"vpn_deny_cidr"`  // VPN 黑名单 CIDR
 }
 
 // ProxyConfig 单个代理配置

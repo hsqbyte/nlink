@@ -1,0 +1,19 @@
+node:
+  name: "e2e-client"
+  token: "e2e-secret"
+  dashboard:
+    enabled: false
+  vpn:
+    enabled: false
+
+peers:
+  - addr: "nlink-server"
+    port: 7000
+    token: "e2e-secret"
+    pool_count: 2
+    proxies:
+      - name: "echo"
+        type: "tcp"
+        local_ip: "echo"
+        local_port: 9999
+        remote_port: 19999

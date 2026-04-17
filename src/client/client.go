@@ -668,10 +668,10 @@ func (c *Client) handleVPNEndpointResp(msg *tcp.Response) {
 	// 打洞失败或无公网地址，回退到静态配置
 	if c.cfg.VPNPort > 0 && c.cfg.VirtualIP != "" {
 		endpoint := fmt.Sprintf("%s:%d", c.cfg.Addr, c.cfg.VPNPort)
-		if err := engine.AddPeer(c.cfg.VirtualIP, endpoint); err != nil {
+		if err := engine.AddPeerWithPolicy(c.cfg.VirtualIP, endpoint, c.cfg.VPNRoutes, c.cfg.VPNAllowCIDR, c.cfg.VPNDenyCIDR); err != nil {
 			fmt.Fprintf(os.Stderr, "[Node:%s] VPN 静态对端添加失败: %v\n", c.nodeName, err)
 		} else {
-			fmt.Printf("[Node:%s] VPN 回退静态配置: %s -> %s\n", c.nodeName, c.cfg.VirtualIP, endpoint)
+			fmt.Printf("[Node:%s] VPN 回退静态配置: %s -> %s (routes=%v)\n", c.nodeName, c.cfg.VirtualIP, endpoint, c.cfg.VPNRoutes)
 		}
 	}
 }
