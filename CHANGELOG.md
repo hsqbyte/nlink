@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v2.4.0] — Batch 6: hardening (auth / audit / RBAC / TLS dial)
+
+Follow-up to v2.3.0. Covers items 3 / 5 / 6 / 7 of the post-audit roadmap.
+
+### Added
+- **`/metrics` Bearer auth** — new `node.dashboard.metrics_token`; when set, `/metrics` requires `Authorization: Bearer <token>` (or `?token=` for browsers). Constant-time comparison, returns 401 + `WWW-Authenticate` on failure. Empty value preserves backward-compat (no auth).
+- **Audit log persistence** — every write op (POST/PUT/DELETE/PATCH) is appended to `data/logs/YYYY-MM-DD/audit/audit-YYYY-MM-DD.log` as JSONL (fields: time/user/role/ip/method/path/status/request_id/body). New `GET /api/v1/audit?date=&user=&path=&method=&limit=&offset=` endpoint (admin only) for querying. `node.dashboard.audit_retain_days` (default 30, 0 = forever) drives async cleanup at daily file rotation.
+- **Multi-user + RBAC** — new `node.dashboard.users: [{username, password, role}]` (`role` = `admin` | `viewer`), coexisting with the legacy single `username`/`password` (treated as implicit admin). New `RequireAdmin` middleware attached to `/api/v1/*`: `viewer` may only `GET`, write methods return 403.
+- **Client-side TLS dial for control channel** — `peers[*].tls`, `tls_server_name`, `tls_insecure_skip`, `tls_ca_file`. When `tls: true`, both the control TCP connection and work-conn dials switch to `tls.DialWithDialer` (TLS 1.2+). Designed to terminate at an stunnel / nginx / haproxy sidecar in front of nlink.
+
+### Changed
+- `DashboardConfig.AuthRequired()` now also returns true when `users` is non-empty.
+- Session struct gains `role`; `addSession(token, username, role)`.
+- Audit middleware now records `role` and writes structured JSONL via `services/audit`.
+
+### Notes
+- Server-native TLS for the gnet-based control channel is **not yet** included; it requires refactoring `tcp.Context.Conn` to an interface and is queued for a follow-up release. The current TLS dial path interoperates with any TLS terminator (stunnel/nginx/haproxy) that proxies to the plain TCP port.
+
 ## [v2.3.0] — Batch 5: user-visible features (`198258f`)
 
 Covers the four user-visible features selected after the Batch 1-4 audit rollout.
