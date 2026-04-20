@@ -152,10 +152,20 @@ type ProxyConfig struct {
 
 // VPNConfig 虚拟局域网配置
 type VPNConfig struct {
-	Enabled    *bool  `yaml:"enabled"`     // 是否启用 (默认 false)
-	VirtualIP  string `yaml:"virtual_ip"`  // 虚拟 IP (CIDR 格式, 如 "10.0.0.1/24")
-	ListenPort int    `yaml:"listen_port"` // UDP 监听端口
-	MTU        int    `yaml:"mtu"`         // MTU (默认 1400)
+	Enabled    *bool          `yaml:"enabled"`        // 是否启用 (默认 false)
+	VirtualIP  string         `yaml:"virtual_ip"`     // 虚拟 IP (CIDR 格式, 如 "10.0.0.1/24"；留空或 "auto" 表示向首个 peer 请求 DHCP)
+	ListenPort int            `yaml:"listen_port"`    // UDP 监听端口
+	MTU        int            `yaml:"mtu"`            // MTU (默认 1400)
+	Gateway    bool           `yaml:"gateway"`        // F10: 网关模式，解密后目标非本机时转发至下一跳对端
+	DHCP       *VPNDHCPConfig `yaml:"dhcp,omitempty"` // F7: 本节点作为 DHCP 服务端时的配置
+}
+
+// VPNDHCPConfig VPN DHCP 服务端配置（仅 listen 端有效）
+type VPNDHCPConfig struct {
+	Enabled    bool     `yaml:"enabled"`     // 是否对外提供 DHCP
+	Subnet     string   `yaml:"subnet"`      // 分配池 CIDR, 如 "10.0.0.0/24"
+	ExcludeIPs []string `yaml:"exclude_ips"` // 排除的 IP (如网关/保留)
+	LeaseFile  string   `yaml:"lease_file"`  // 持久化路径 (默认 data/vpn_leases.json)
 }
 
 // IsEnabled 返回 VPN 是否启用

@@ -67,6 +67,13 @@ func NewServer() (*Server, error) {
 		}
 	}
 
+	// 启动 VPN DHCP 服务（如果本节点启用了 VPN.DHCP）
+	if cfg.Node.VPN != nil && cfg.Node.VPN.DHCP != nil && cfg.Node.VPN.DHCP.Enabled {
+		if err := services.InitVPNDHCP(cfg.Node.VPN.DHCP.Subnet, cfg.Node.VPN.DHCP.ExcludeIPs, cfg.Node.VPN.DHCP.LeaseFile); err != nil {
+			return nil, fmt.Errorf("VPN DHCP 初始化失败: %w", err)
+		}
+	}
+
 	// 启动 HTTPS 虚拟主机服务（ACME 自动签发）
 	if lc.VhostHTTPSPort > 0 && lc.ACME != nil && lc.ACME.Enabled {
 		if lc.ACME.Email == "" {

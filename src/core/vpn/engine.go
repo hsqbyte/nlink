@@ -318,6 +318,24 @@ func (e *Engine) udpToTUN() {
 			srcIP := net.IP(buf[12:16])
 			dstIP := net.IP(buf[16:20])
 			logger.Debug("[VPN] UDP->TUN: %s -> %s (%d bytes, from %v)", srcIP, dstIP, n, remoteAddr)
+
+			// F10 网关转发：启用 gateway 且目标不是本机 VPN IP → 查对端转发
+			if e.config.Gateway && !dstIP.Equal(e.transport.localIP) {
+				// 仅转发本 VPN 子网内或路由可达的包
+				routable := e.subnet.Contains(dstIP)
+				if !routable {
+					if _, ok := e.transport.LookupPeerForDst(dstIP); ok {
+						routable = true
+					}
+				}
+				if routable {
+					logger.Debug("[VPN-GW] 转发 %s -> %s", srcIP, dstIP)
+					if err := e.transport.SendTo(buf[:n], dstIP); err != nil {
+						logger.Debug("[VPN-GW] 转发失败: %v", err)
+					}
+					continue
+				}
+			}
 		}
 
 		// 写入 TUN 设备，需要加上 offset

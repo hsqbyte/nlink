@@ -150,3 +150,15 @@ type VPNPunchData struct {
 	PublicAddr string `json:"public_addr"` // 请求端公网地址
 	ListenPort int    `json:"listen_port"` // 请求端 VPN UDP 端口
 }
+
+// VPNDHCPRequestData 客户端请求 DHCP 分配虚拟 IP
+type VPNDHCPRequestData struct {
+	NodeName string `json:"node_name"` // 节点名称（lease key）
+	Hint     string `json:"hint"`      // 可选：期望的 IP（如上次分配过）
+}
+
+// VPNDHCPResponseData 服务端回复 DHCP 分配
+type VPNDHCPResponseData struct {
+	VirtualIP string `json:"virtual_ip"` // CIDR 格式, 如 "10.0.0.5/24"
+	Error     string `json:"error"`      // 非空表示失败
+}

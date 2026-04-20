@@ -37,9 +37,15 @@ node:
   # 虚拟局域网（可选）
   vpn:
     enabled: true                   # 是否启用
-    virtual_ip: "10.0.0.1/24"      # 本节点虚拟 IP (CIDR)
+    virtual_ip: "10.0.0.1/24"      # 本节点虚拟 IP (CIDR)；留空或 "auto" 则向首个 peer 请求 DHCP
     listen_port: 7200               # UDP 监听端口
     mtu: 1400                       # MTU
+    # gateway: true                 # F10: 网关模式，将非本机目标的 VPN 包转发给下一跳对端
+    # dhcp:                         # F7: 本节点作为 DHCP 服务端时的配置
+    #   enabled: true
+    #   subnet: "10.0.0.0/24"
+    #   exclude_ips: ["10.0.0.1"]
+    #   lease_file: "data/vpn_leases.json"
 
 # 对端节点（可选，不配则不主动连接）
 # peers:

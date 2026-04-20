@@ -104,6 +104,26 @@ func main() {
 		// 确保 TunnelService 已初始化（供 upstream peer 跟踪使用）
 		services.EnsureTunnelService()
 	}
+
+	// VPN DHCP 引导：如果 vpn.virtual_ip 为空或 "auto"，向首个 peer 请求分配
+	if cfg.Node.VPN.IsEnabled() && (cfg.Node.VPN.VirtualIP == "" || cfg.Node.VPN.VirtualIP == "auto") {
+		if len(cfg.Peers) == 0 {
+			logger.Warn("VPN virtual_ip 为 auto 但没有配置 peers，跳过 DHCP")
+		} else {
+			first := &cfg.Peers[0]
+			logger.Info("VPN DHCP 引导: 向 %s:%d 请求分配", first.Addr, first.Port)
+			cidr, err := client.RequestDHCP(cfg.Node.Name, "", first)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "VPN DHCP 失败: %v (使用静态或跳过)\n", err)
+				logger.Error("VPN DHCP 失败: %v", err)
+			} else {
+				logger.Info("VPN DHCP 分配成功: %s", cidr)
+				fmt.Printf("  VPN DHCP:       %s\n", cidr)
+				cfg.Node.VPN.VirtualIP = cidr
+			}
+		}
+	}
+
 	for i := range cfg.Peers {
 		peer := cfg.Peers[i]
 		logger.Info("连接对端节点: %s:%d", peer.Addr, peer.Port)
@@ -116,7 +136,7 @@ func main() {
 
 	// 启动 VPN 引擎（如果配置了 vpn）
 	var vpnEngine *vpn.Engine
-	if cfg.Node.VPN.IsEnabled() {
+	if cfg.Node.VPN.IsEnabled() && cfg.Node.VPN.VirtualIP != "" && cfg.Node.VPN.VirtualIP != "auto" {
 		var err error
 		vpnEngine, err = vpn.NewEngine(cfg.Node.VPN, cfg.Node.Token)
 		if err != nil {

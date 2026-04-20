@@ -49,6 +49,8 @@ func init() {
 
 	// VPN 打洞信令
 	router.TCPRouter.Handle("vpn_endpoint", handleVPNEndpoint)
+	// VPN DHCP
+	router.TCPRouter.Handle("vpn_dhcp_request", handleVPNDHCPRequest)
 }
 
 // handleAuth 认证处理
@@ -180,4 +182,21 @@ func handleVPNEndpoint(ctx *tcp.Context) error {
 		PublicAddr: myPublicAddr,
 		ListenPort: engine.Config().ListenPort,
 	})
+}
+
+// handleVPNDHCPRequest 处理 VPN DHCP 请求
+func handleVPNDHCPRequest(ctx *tcp.Context) error {
+	var data tcp.VPNDHCPRequestData
+	if err := ctx.Bind(&data); err != nil {
+		return ctx.Error(400, "参数解析失败")
+	}
+	svc := services.GetVPNDHCP()
+	if svc == nil {
+		return ctx.Reply(tcp.VPNDHCPResponseData{Error: "本节点未启用 VPN DHCP"})
+	}
+	cidr, err := svc.Allocate(data.NodeName, data.Hint)
+	if err != nil {
+		return ctx.Reply(tcp.VPNDHCPResponseData{Error: err.Error()})
+	}
+	return ctx.Reply(tcp.VPNDHCPResponseData{VirtualIP: cidr})
 }
