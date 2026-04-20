@@ -110,18 +110,34 @@ type PeerConfig struct {
 	TLSCAFile         string        `yaml:"tls_ca_file"`         // 自定义 CA 证书 (PEM)
 }
 
+// HealthCheckConfig 后端健康检查配置
+type HealthCheckConfig struct {
+	Enabled    bool   `yaml:"enabled"`     // 是否启用
+	Type       string `yaml:"type"`        // tcp | http (默认 tcp)
+	IntervalMs int    `yaml:"interval_ms"` // 检查间隔 (默认 5000)
+	TimeoutMs  int    `yaml:"timeout_ms"`  // 超时 (默认 2000)
+	Path       string `yaml:"path"`        // type=http 时的路径 (默认 /health)
+	Rise       int    `yaml:"rise"`        // N 次成功即标记为健康 (默认 2)
+	Fall       int    `yaml:"fall"`        // N 次失败即标记为不健康 (默认 3)
+}
+
 // ProxyConfig 单个代理配置
 type ProxyConfig struct {
-	Name          string   `yaml:"name"`
-	Type          string   `yaml:"type"`
-	LocalIP       string   `yaml:"local_ip"`
-	LocalPort     int      `yaml:"local_port"`
-	RemotePort    int      `yaml:"remote_port"`
-	CustomDomains []string `yaml:"custom_domains,omitempty"` // type=http 时：绑定的自定义域名列表
-	HostRewrite   string   `yaml:"host_rewrite,omitempty"`   // type=http 时：是否改写请求 Host
-	AllowCIDR     []string `yaml:"allow_cidr,omitempty"`     // 仅允许这些 CIDR（优先于 deny）
-	DenyCIDR      []string `yaml:"deny_cidr,omitempty"`      // 拒绝这些 CIDR
-	RateLimit     int64    `yaml:"rate_limit,omitempty"`     // 单连接限速 bytes/sec（0=不限）
+	Name          string             `yaml:"name"`
+	Type          string             `yaml:"type"`
+	LocalIP       string             `yaml:"local_ip"`
+	LocalPort     int                `yaml:"local_port"`
+	RemotePort    int                `yaml:"remote_port"`
+	RemotePortEnd int                `yaml:"remote_port_end,omitempty"` // F5: 端口范围终点 (local_port 同步偏移)
+	LocalBackends []string           `yaml:"local_backends,omitempty"`  // F3: 多后端 (host:port)，非空时覆盖 LocalIP/LocalPort
+	LBStrategy    string             `yaml:"lb_strategy,omitempty"`     // F3: roundrobin|random|leastconn
+	HealthCheck   *HealthCheckConfig `yaml:"health_check,omitempty"`    // F4
+	ProxyProtocol string             `yaml:"proxy_protocol,omitempty"`  // F6: "" | v1 | v2
+	CustomDomains []string           `yaml:"custom_domains,omitempty"`  // type=http 时：绑定的自定义域名列表
+	HostRewrite   string             `yaml:"host_rewrite,omitempty"`    // type=http 时：是否改写请求 Host
+	AllowCIDR     []string           `yaml:"allow_cidr,omitempty"`      // 仅允许这些 CIDR（优先于 deny）
+	DenyCIDR      []string           `yaml:"deny_cidr,omitempty"`       // 拒绝这些 CIDR
+	RateLimit     int64              `yaml:"rate_limit,omitempty"`      // 单连接限速 bytes/sec（0=不限）
 }
 
 // VPNConfig 虚拟局域网配置

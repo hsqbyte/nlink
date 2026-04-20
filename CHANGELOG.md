@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v2.5.0] — Batch 7: traffic features (LB / health-check / port range / PROXY protocol)
+
+Client-side traffic-layer features. All four are backward compatible: omit the new fields and behaviour is unchanged.
+
+### Added
+- **Multi-backend load balancing (F3)** — `proxies[*].local_backends: ["ip:port", ...]` with `lb_strategy: roundrobin | random | leastconn`. When empty, falls back to single `local_ip:local_port`.
+- **Active health check (F4)** — `proxies[*].health_check: { enabled, type: tcp|http, interval_ms, timeout_ms, path, rise, fall }`. Background probes mark backends healthy/unhealthy; LB picker filters them with safe fallback (never black-holes).
+- **Port-range proxy (F5)** — `proxies[*].remote_port_end`. A single config entry expands into N independent proxies named `<name>-<offset>` with `RemotePort=remote_port+offset`, `LocalPort=local_port+offset`. Ideal for game / P2P port batches.
+- **PROXY protocol v1/v2 (F6)** — `proxies[*].proxy_protocol: v1 | v2`. Header is written to the backend immediately after dial so downstream services (nginx / haproxy) see the real client IP and port.
+
+### Changed
+- `AddProxyData` wire type gained `remote_port_end`, `local_backends`, `lb_strategy`, `proxy_protocol` so remote-add API can push the new fields too.
+- `client.Client` gains `backendPools map[string]*BackendPool`, built from config at startup and updated when proxies are added at runtime.
+
+### Notes
+- These features operate on the **client** (i.e. the node that holds the local backend). The server node is unchanged.
+- Health-check uses a TCP or `GET /path` probe; the backend is removed from the picker after `fall` consecutive failures and restored after `rise` consecutive successes.
+- Port-range expansion is purely a client-side preprocessing step; the server observes N independent `new_proxy` registrations as usual.
+
 ## [v2.4.0] — Batch 6: hardening (auth / audit / RBAC / TLS dial)
 
 Follow-up to v2.3.0. Covers items 3 / 5 / 6 / 7 of the post-audit roadmap.

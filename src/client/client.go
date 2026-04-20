@@ -30,11 +30,12 @@ type Client struct {
 	mu            sync.Mutex
 	seqID         int
 	done          chan struct{}
-	authenticated bool         // 是否曾认证成功
-	poolCount     int          // 全局预建连接数
-	connID        string       // 对端分配的连接ID
-	crypto        *tcp.Crypto  // 控制通道加密
-	pingStart     atomic.Int64 // 心跳发送时间 (UnixMilli)
+	authenticated bool                    // 是否曾认证成功
+	poolCount     int                     // 全局预建连接数
+	connID        string                  // 对端分配的连接ID
+	crypto        *tcp.Crypto             // 控制通道加密
+	pingStart     atomic.Int64            // 心跳发送时间 (UnixMilli)
+	backendPools  map[string]*BackendPool // proxyName -> 后端池 (含 LB + HC)
 }
 
 func Run(nodeName string, cfg *modelConfig.PeerConfig) error {
@@ -96,6 +97,21 @@ func (c *Client) run() error {
 	defer func() {
 		close(c.done)
 		conn.Close()
+	}()
+
+	// 展开端口范围代理 (F5) —— 在注册前绑定到本地 cfg
+	expandProxyConfig(c.cfg)
+
+	// 构造后端池 (F3/F4)。openWorkConn/openPoolConn 会使用这里的池 dial。
+	c.backendPools = make(map[string]*BackendPool, len(c.cfg.Proxies))
+	for i := range c.cfg.Proxies {
+		p := &c.cfg.Proxies[i]
+		c.backendPools[p.Name] = NewBackendPool(p)
+	}
+	defer func() {
+		for _, bp := range c.backendPools {
+			bp.Close()
+		}
 	}()
 
 	if err := c.auth(); err != nil {
@@ -204,15 +220,42 @@ func (c *Client) openPoolConn() {
 		go c.openPoolConn()
 		return
 	}
-	localConn, err := net.DialTimeout("tcp", localAddr, 5*time.Second)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[Node:%s] 连接池-本地连接失败 %s: %v\n", c.nodeName, localAddr, err)
+	bp := c.backendPools[proxyName]
+	var (
+		localConn net.Conn
+		backend   *Backend
+		dialErr   error
+	)
+	if bp != nil {
+		localConn, backend, dialErr = bp.DialBackend(5 * time.Second)
+	} else {
+		localConn, dialErr = net.DialTimeout("tcp", localAddr, 5*time.Second)
+	}
+	if dialErr != nil {
+		fmt.Fprintf(os.Stderr, "[Node:%s] 连接池-本地连接失败 %s: %v\n", c.nodeName, localAddr, dialErr)
 		workConn.Close()
 		return
 	}
-
-	fmt.Printf("[Node:%s] 连接池转发: %s <-> %s\n", c.nodeName, proxyName, localAddr)
+	if hdr := proxyProtocolHeader(proxy.ProxyProtocol, workConn.RemoteAddr(), localConn.RemoteAddr()); hdr != nil {
+		if _, werr := localConn.Write(hdr); werr != nil {
+			fmt.Fprintf(os.Stderr, "[Node:%s] 连接池-PROXY 头写入失败: %v\n", c.nodeName, werr)
+			localConn.Close()
+			workConn.Close()
+			if backend != nil {
+				backend.ActiveConns.Add(-1)
+			}
+			return
+		}
+	}
+	backendAddr := localAddr
+	if backend != nil {
+		backendAddr = backend.Addr
+	}
+	fmt.Printf("[Node:%s] 连接池转发: %s <-> %s\n", c.nodeName, proxyName, backendAddr)
 	relay(workConn, localConn)
+	if backend != nil {
+		backend.ActiveConns.Add(-1)
+	}
 
 	// 转发结束后补充池连接
 	go c.openPoolConn()
@@ -450,15 +493,42 @@ func (c *Client) openWorkConn(proxyName string) {
 		go c.openPoolConn()
 		return
 	}
-	localConn, err := net.DialTimeout("tcp", localAddr, 5*time.Second)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[Node:%s] 本地连接失败 %s: %v\n", c.nodeName, localAddr, err)
+	bp := c.backendPools[proxyName]
+	var (
+		localConn net.Conn
+		backend   *Backend
+		dialErr   error
+	)
+	if bp != nil {
+		localConn, backend, dialErr = bp.DialBackend(5 * time.Second)
+	} else {
+		localConn, dialErr = net.DialTimeout("tcp", localAddr, 5*time.Second)
+	}
+	if dialErr != nil {
+		fmt.Fprintf(os.Stderr, "[Node:%s] 本地连接失败 %s: %v\n", c.nodeName, localAddr, dialErr)
 		workConn.Close()
 		return
 	}
-
-	fmt.Printf("[Node:%s] 开始转发: %s <-> %s\n", c.nodeName, proxyName, localAddr)
+	if hdr := proxyProtocolHeader(proxy.ProxyProtocol, workConn.RemoteAddr(), localConn.RemoteAddr()); hdr != nil {
+		if _, werr := localConn.Write(hdr); werr != nil {
+			fmt.Fprintf(os.Stderr, "[Node:%s] PROXY 头写入失败: %v\n", c.nodeName, werr)
+			localConn.Close()
+			workConn.Close()
+			if backend != nil {
+				backend.ActiveConns.Add(-1)
+			}
+			return
+		}
+	}
+	backendAddr := localAddr
+	if backend != nil {
+		backendAddr = backend.Addr
+	}
+	fmt.Printf("[Node:%s] 开始转发: %s <-> %s\n", c.nodeName, proxyName, backendAddr)
 	relay(workConn, localConn)
+	if backend != nil {
+		backend.ActiveConns.Add(-1)
+	}
 
 	// 按需连接用完后，补充全局池连接
 	go c.openPoolConn()
@@ -500,6 +570,10 @@ func (c *Client) handleAddProxy(seq string, data *tcp.AddProxyData) {
 		LocalIP:       data.LocalIP,
 		LocalPort:     data.LocalPort,
 		RemotePort:    data.RemotePort,
+		RemotePortEnd: data.RemotePortEnd,
+		LocalBackends: data.LocalBackends,
+		LBStrategy:    data.LBStrategy,
+		ProxyProtocol: data.ProxyProtocol,
 		CustomDomains: data.CustomDomains,
 		HostRewrite:   data.HostRewrite,
 		AllowCIDR:     data.AllowCIDR,
@@ -508,6 +582,11 @@ func (c *Client) handleAddProxy(seq string, data *tcp.AddProxyData) {
 	}
 
 	c.cfg.Proxies = append(c.cfg.Proxies, newProxy)
+	// 运行时新建后端池 (LB/HC)，允许后续 openWorkConn/openPoolConn 命中
+	if c.backendPools == nil {
+		c.backendPools = make(map[string]*BackendPool)
+	}
+	c.backendPools[newProxy.Name] = NewBackendPool(&newProxy)
 	fmt.Printf("[Node:%s] 远程添加代理: %s -> :%d (本地 %s:%d)\n", c.nodeName, data.Name, data.RemotePort, data.LocalIP, data.LocalPort)
 
 	c.replyCmd(seq, "add_proxy", 200, "代理已添加", nil)

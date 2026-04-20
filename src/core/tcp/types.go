@@ -91,6 +91,10 @@ type AddProxyData struct {
 	LocalIP       string   `json:"local_ip"`
 	LocalPort     int      `json:"local_port"`
 	RemotePort    int      `json:"remote_port"`
+	RemotePortEnd int      `json:"remote_port_end,omitempty"` // F5: 端口范围终点
+	LocalBackends []string `json:"local_backends,omitempty"`  // F3: 多后端
+	LBStrategy    string   `json:"lb_strategy,omitempty"`     // F3: 负载均衡策略
+	ProxyProtocol string   `json:"proxy_protocol,omitempty"`  // F6: v1 / v2
 	CustomDomains []string `json:"custom_domains,omitempty"`
 	HostRewrite   string   `json:"host_rewrite,omitempty"`
 	AllowCIDR     []string `json:"allow_cidr,omitempty"`
