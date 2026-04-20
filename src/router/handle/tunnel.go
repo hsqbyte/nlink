@@ -127,6 +127,8 @@ func handleNewProxy(ctx *tcp.Context) error {
 		regErr = ts.RegisterUDPProxy(ctx.ConnID, data.Name, data.RemotePort, opts)
 	} else if data.Type == "http" {
 		regErr = ts.RegisterHTTPProxy(ctx.ConnID, data.Name, data.CustomDomains, data.HostRewrite, opts)
+	} else if data.Type == "socks5" {
+		regErr = ts.RegisterSOCKS5Proxy(ctx.ConnID, data.Name, data.RemotePort, opts)
 	} else {
 		regErr = ts.RegisterProxy(ctx.ConnID, data.Name, data.RemotePort, opts)
 	}

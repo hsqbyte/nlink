@@ -7,13 +7,13 @@ import (
 
 // StatsSnapshot 单次采样快照
 type StatsSnapshot struct {
-	Timestamp   int64 `json:"ts"`            // unix 秒
-	TotalConns  int64 `json:"total_conns"`   // 累计连接数
-	ActiveConns int64 `json:"active_conns"`  // 当前活跃连接
-	BytesIn     int64 `json:"bytes_in"`      // 累计入流量
-	BytesOut    int64 `json:"bytes_out"`     // 累计出流量
-	PeerCount   int   `json:"peer_count"`    // 在线对端
-	ProxyCount  int   `json:"proxy_count"`   // 代理数
+	Timestamp   int64 `json:"ts"`           // unix 秒
+	TotalConns  int64 `json:"total_conns"`  // 累计连接数
+	ActiveConns int64 `json:"active_conns"` // 当前活跃连接
+	BytesIn     int64 `json:"bytes_in"`     // 累计入流量
+	BytesOut    int64 `json:"bytes_out"`    // 累计出流量
+	PeerCount   int   `json:"peer_count"`   // 在线对端
+	ProxyCount  int   `json:"proxy_count"`  // 代理数
 }
 
 // StatsHistory 统计历史环形缓冲；默认保留 1440 个采样点（采样周期 30s → 覆盖 12h）

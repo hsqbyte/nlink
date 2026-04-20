@@ -123,6 +123,8 @@ func (ts *TunnelService) AddPeerProxy(connID string, data *tcp.AddProxyData) err
 		err = ts.RegisterUDPProxy(connID, data.Name, data.RemotePort, opts)
 	} else if data.Type == "http" {
 		err = ts.RegisterHTTPProxy(connID, data.Name, data.CustomDomains, data.HostRewrite, opts)
+	} else if data.Type == "socks5" {
+		err = ts.RegisterSOCKS5Proxy(connID, data.Name, data.RemotePort, opts)
 	} else {
 		err = ts.RegisterProxy(connID, data.Name, data.RemotePort, opts)
 	}

@@ -12,13 +12,23 @@ type NodeConfig struct {
 
 // ListenConfig 监听配置
 type ListenConfig struct {
-	Port              int `yaml:"port"`                 // TCP 控制通道端口
-	MaxMessageSize    int `yaml:"max_message_size"`     // 最大消息大小
-	HeartbeatTimeout  int `yaml:"heartbeat_timeout"`    // 心跳超时(秒)
-	MaxProxiesPerPeer int `yaml:"max_proxies_per_peer"` // 每对端最大代理数
-	WorkConnTimeout   int `yaml:"work_conn_timeout"`    // 工作连接超时(秒)
-	PoolCount         int `yaml:"pool_count"`           // 全局连接池大小(0=禁用)
-	VhostHTTPPort     int `yaml:"vhost_http_port"`      // HTTP 虚拟主机端口 (type=http 的代理在此端口共享)
+	Port              int         `yaml:"port"`                 // TCP 控制通道端口
+	MaxMessageSize    int         `yaml:"max_message_size"`     // 最大消息大小
+	HeartbeatTimeout  int         `yaml:"heartbeat_timeout"`    // 心跳超时(秒)
+	MaxProxiesPerPeer int         `yaml:"max_proxies_per_peer"` // 每对端最大代理数
+	WorkConnTimeout   int         `yaml:"work_conn_timeout"`    // 工作连接超时(秒)
+	PoolCount         int         `yaml:"pool_count"`           // 全局连接池大小(0=禁用)
+	VhostHTTPPort     int         `yaml:"vhost_http_port"`      // HTTP 虚拟主机端口 (type=http 的代理在此端口共享)
+	VhostHTTPSPort    int         `yaml:"vhost_https_port"`     // HTTPS 虚拟主机端口 (启用 ACME 自动签发)
+	ACME              *ACMEConfig `yaml:"acme,omitempty"`       // Let's Encrypt ACME 配置
+}
+
+// ACMEConfig Let's Encrypt 自动证书配置
+type ACMEConfig struct {
+	Enabled  bool     `yaml:"enabled"`   // 是否启用
+	Email    string   `yaml:"email"`     // 联系邮箱（必填）
+	CacheDir string   `yaml:"cache_dir"` // 证书缓存目录（默认 data/acme）
+	Domains  []string `yaml:"domains"`   // 白名单域名（留空=允许所有已注册 vhost 域名）
 }
 
 // DashboardUser 单个用户
@@ -30,15 +40,15 @@ type DashboardUser struct {
 
 // DashboardConfig 管理面板配置
 type DashboardConfig struct {
-	Enabled         *bool           `yaml:"enabled"`          // 是否启用 (默认 true)
-	Port            int             `yaml:"port"`             // HTTP 端口
-	ShutdownTimeout int             `yaml:"shutdown_timeout"` // 优雅关闭超时(秒)
-	Username        string          `yaml:"username"`         // 登录用户名 (留空则不启用认证；存在时视为 admin)
-	Password        string          `yaml:"password"`         // 登录密码
-	Users           []DashboardUser `yaml:"users"`            // 多用户列表（可与 username/password 共存）
-	TLSCertFile     string          `yaml:"tls_cert_file"`    // TLS 证书文件 (留空则 HTTP)
-	TLSKeyFile      string          `yaml:"tls_key_file"`     // TLS 私钥文件
-	MetricsToken    string          `yaml:"metrics_token"`    // /metrics 端点 Bearer Token (留空则不鉴权)
+	Enabled         *bool           `yaml:"enabled"`           // 是否启用 (默认 true)
+	Port            int             `yaml:"port"`              // HTTP 端口
+	ShutdownTimeout int             `yaml:"shutdown_timeout"`  // 优雅关闭超时(秒)
+	Username        string          `yaml:"username"`          // 登录用户名 (留空则不启用认证；存在时视为 admin)
+	Password        string          `yaml:"password"`          // 登录密码
+	Users           []DashboardUser `yaml:"users"`             // 多用户列表（可与 username/password 共存）
+	TLSCertFile     string          `yaml:"tls_cert_file"`     // TLS 证书文件 (留空则 HTTP)
+	TLSKeyFile      string          `yaml:"tls_key_file"`      // TLS 私钥文件
+	MetricsToken    string          `yaml:"metrics_token"`     // /metrics 端点 Bearer Token (留空则不鉴权)
 	AuditRetainDays int             `yaml:"audit_retain_days"` // 审计日志保留天数 (默认 30，0=永久)
 }
 
@@ -94,20 +104,20 @@ func (d *DashboardConfig) TLSEnabled() bool {
 
 // PeerConfig 对端节点配置
 type PeerConfig struct {
-	Addr              string        `yaml:"addr"`                // 对端地址
-	Port              int           `yaml:"port"`                // 对端控制端口
-	Token             string        `yaml:"token"`               // 认证令牌
-	PoolCount         int           `yaml:"pool_count"`          // 预建连接数(0=禁用)
-	Proxies           []ProxyConfig `yaml:"proxies"`             // 代理列表
-	VPNPort           int           `yaml:"vpn_port"`            // 对端 VPN UDP 端口（可选）
-	VirtualIP         string        `yaml:"virtual_ip"`          // 对端虚拟 IP（可选）
-	VPNRoutes         []string      `yaml:"vpn_routes"`          // 对端宣告的子网路由 CIDR（流量路由到对端）
-	VPNAllowCIDR      []string      `yaml:"vpn_allow_cidr"`      // VPN 白名单 CIDR（与对端之间仅允许）
-	VPNDenyCIDR       []string      `yaml:"vpn_deny_cidr"`       // VPN 黑名单 CIDR
-	TLS               bool          `yaml:"tls"`                 // 控制通道使用 TLS 拨号 (需对端配 stunnel/nginx 等终结)
-	TLSServerName     string        `yaml:"tls_server_name"`     // TLS SNI / 验证主机名 (默认 = addr)
-	TLSInsecureSkip   bool          `yaml:"tls_insecure_skip"`   // 跳过证书校验 (仅自签 / 测试)
-	TLSCAFile         string        `yaml:"tls_ca_file"`         // 自定义 CA 证书 (PEM)
+	Addr            string        `yaml:"addr"`              // 对端地址
+	Port            int           `yaml:"port"`              // 对端控制端口
+	Token           string        `yaml:"token"`             // 认证令牌
+	PoolCount       int           `yaml:"pool_count"`        // 预建连接数(0=禁用)
+	Proxies         []ProxyConfig `yaml:"proxies"`           // 代理列表
+	VPNPort         int           `yaml:"vpn_port"`          // 对端 VPN UDP 端口（可选）
+	VirtualIP       string        `yaml:"virtual_ip"`        // 对端虚拟 IP（可选）
+	VPNRoutes       []string      `yaml:"vpn_routes"`        // 对端宣告的子网路由 CIDR（流量路由到对端）
+	VPNAllowCIDR    []string      `yaml:"vpn_allow_cidr"`    // VPN 白名单 CIDR（与对端之间仅允许）
+	VPNDenyCIDR     []string      `yaml:"vpn_deny_cidr"`     // VPN 黑名单 CIDR
+	TLS             bool          `yaml:"tls"`               // 控制通道使用 TLS 拨号 (需对端配 stunnel/nginx 等终结)
+	TLSServerName   string        `yaml:"tls_server_name"`   // TLS SNI / 验证主机名 (默认 = addr)
+	TLSInsecureSkip bool          `yaml:"tls_insecure_skip"` // 跳过证书校验 (仅自签 / 测试)
+	TLSCAFile       string        `yaml:"tls_ca_file"`       // 自定义 CA 证书 (PEM)
 }
 
 // HealthCheckConfig 后端健康检查配置

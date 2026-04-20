@@ -115,6 +115,7 @@ func (s *HTTPVhostService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if proxy.HostRewrite != "" {
 				req.Host = proxy.HostRewrite
 			}
+			// B2: httputil.ReverseProxy 自身支持 WebSocket (Upgrade) 透传，无需额外处理
 		},
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {

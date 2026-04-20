@@ -8,7 +8,9 @@ import (
 
 // expandProxyConfig expands port-range proxies into multiple independent entries.
 // If p.RemotePortEnd > p.RemotePort, create one proxy per port q in [RemotePort, RemotePortEnd]:
-//   Name = "<name>-<offset>", RemotePort = q, LocalPort = LocalPort+offset.
+//
+//	Name = "<name>-<offset>", RemotePort = q, LocalPort = LocalPort+offset.
+//
 // Other fields (backends / health-check / PROXY protocol / ACL / rate-limit) are reused.
 func expandProxyConfig(cfg *modelConfig.PeerConfig) {
 	if cfg == nil {

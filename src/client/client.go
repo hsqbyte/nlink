@@ -193,8 +193,8 @@ func (c *Client) openPoolConn() {
 		return
 	}
 
-	// 阻塞等待服务端激活信号（携带代理名）
-	proxyName, err := readActivation(workConn)
+	// 阻塞等待服务端激活信号（携带代理名 + 可选动态目标）
+	proxyName, dynTarget, err := readActivation(workConn)
 	if err != nil {
 		workConn.Close()
 		return
@@ -217,6 +217,19 @@ func (c *Client) openPoolConn() {
 	if proxy.Type == "udp" {
 		fmt.Printf("[Node:%s] 连接池 UDP 转发: %s <-> %s\n", c.nodeName, proxyName, localAddr)
 		relayUDP(workConn, proxy.LocalIP, proxy.LocalPort)
+		go c.openPoolConn()
+		return
+	}
+	// SOCKS5 等动态目标：跳过 BackendPool，直接拨号目标
+	if dynTarget != "" {
+		localConn, dialErr := net.DialTimeout("tcp", dynTarget, 10*time.Second)
+		if dialErr != nil {
+			fmt.Fprintf(os.Stderr, "[Node:%s] 连接池-动态目标拨号失败 %s: %v\n", c.nodeName, dynTarget, dialErr)
+			workConn.Close()
+			return
+		}
+		fmt.Printf("[Node:%s] 连接池转发(dyn): %s <-> %s\n", c.nodeName, proxyName, dynTarget)
+		relay(workConn, localConn)
 		go c.openPoolConn()
 		return
 	}
@@ -261,24 +274,43 @@ func (c *Client) openPoolConn() {
 	go c.openPoolConn()
 }
 
-// readActivation 读取服务端激活信号（携带代理名）
-func readActivation(conn net.Conn) (string, error) {
+// readActivation 读取服务端激活信号（携带代理名与可选动态目标）
+// 0x01: [flag][name_len:u16][name]
+// 0x02: [flag][name_len:u16][name][target_len:u16][target]
+func readActivation(conn net.Conn) (string, string, error) {
 	header := make([]byte, 3)
 	if _, err := io.ReadFull(conn, header); err != nil {
-		return "", err
+		return "", "", err
 	}
-	if header[0] != 0x01 {
-		return "", fmt.Errorf("invalid activation signal: %x", header[0])
+	flag := header[0]
+	if flag != 0x01 && flag != 0x02 {
+		return "", "", fmt.Errorf("invalid activation signal: %x", flag)
 	}
 	nameLen := binary.BigEndian.Uint16(header[1:3])
 	if nameLen == 0 || nameLen > 256 {
-		return "", fmt.Errorf("invalid proxy name length: %d", nameLen)
+		return "", "", fmt.Errorf("invalid proxy name length: %d", nameLen)
 	}
 	nameBuf := make([]byte, nameLen)
 	if _, err := io.ReadFull(conn, nameBuf); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return string(nameBuf), nil
+	if flag == 0x01 {
+		return string(nameBuf), "", nil
+	}
+	// 0x02: 读取 target
+	tl := make([]byte, 2)
+	if _, err := io.ReadFull(conn, tl); err != nil {
+		return "", "", err
+	}
+	targetLen := binary.BigEndian.Uint16(tl)
+	if targetLen == 0 || targetLen > 512 {
+		return "", "", fmt.Errorf("invalid target length: %d", targetLen)
+	}
+	targetBuf := make([]byte, targetLen)
+	if _, err := io.ReadFull(conn, targetBuf); err != nil {
+		return "", "", err
+	}
+	return string(nameBuf), string(targetBuf), nil
 }
 
 func (c *Client) auth() error {
@@ -486,10 +518,35 @@ func (c *Client) openWorkConn(proxyName string) {
 		return
 	}
 
+	// SOCKS5 代理：读取激活信号以获得动态目标
+	var dynTarget string
+	if proxy.Type == "socks5" {
+		_, tgt, aerr := readActivation(workConn)
+		if aerr != nil {
+			fmt.Fprintf(os.Stderr, "[Node:%s] SOCKS5 激活读取失败: %v\n", c.nodeName, aerr)
+			workConn.Close()
+			return
+		}
+		dynTarget = tgt
+	}
+
 	localAddr := net.JoinHostPort(proxy.LocalIP, fmt.Sprintf("%d", proxy.LocalPort))
 	if proxy.Type == "udp" {
 		fmt.Printf("[Node:%s] 开始 UDP 转发: %s <-> %s\n", c.nodeName, proxyName, localAddr)
 		relayUDP(workConn, proxy.LocalIP, proxy.LocalPort)
+		go c.openPoolConn()
+		return
+	}
+	// SOCKS5：按动态目标拨号，绕过 BackendPool
+	if dynTarget != "" {
+		localConn, dialErr := net.DialTimeout("tcp", dynTarget, 10*time.Second)
+		if dialErr != nil {
+			fmt.Fprintf(os.Stderr, "[Node:%s] SOCKS5 拨号失败 %s: %v\n", c.nodeName, dynTarget, dialErr)
+			workConn.Close()
+			return
+		}
+		fmt.Printf("[Node:%s] SOCKS5 转发: %s <-> %s\n", c.nodeName, proxyName, dynTarget)
+		relay(workConn, localConn)
 		go c.openPoolConn()
 		return
 	}

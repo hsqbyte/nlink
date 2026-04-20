@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	punchAttempts  = 10              // 打洞尝试次数
-	punchInterval  = 200 * time.Millisecond // 每次发送间隔
-	punchTimeout   = 5 * time.Second        // 总超时
+	punchAttempts = 10                     // 打洞尝试次数
+	punchInterval = 200 * time.Millisecond // 每次发送间隔
+	punchTimeout  = 5 * time.Second        // 总超时
 )
 
 // PunchResult 打洞结果
@@ -77,16 +77,16 @@ func makePunchProbe(srcIP, dstIP net.IP) []byte {
 	}
 
 	packet := make([]byte, 20)
-	packet[0] = 0x45       // Version=4, IHL=5 (20 bytes)
-	packet[1] = 0          // DSCP/ECN
-	packet[2] = 0          // Total length = 20
+	packet[0] = 0x45 // Version=4, IHL=5 (20 bytes)
+	packet[1] = 0    // DSCP/ECN
+	packet[2] = 0    // Total length = 20
 	packet[3] = 20
-	packet[4] = 0          // Identification
+	packet[4] = 0 // Identification
 	packet[5] = 0
-	packet[6] = 0x40       // Flags: Don't Fragment
+	packet[6] = 0x40 // Flags: Don't Fragment
 	packet[7] = 0
-	packet[8] = 64         // TTL
-	packet[9] = 0          // Protocol: reserved (probe only)
+	packet[8] = 64 // TTL
+	packet[9] = 0  // Protocol: reserved (probe only)
 	// packet[10:12] = checksum (skip for probe)
 	copy(packet[12:16], src)
 	copy(packet[16:20], dst)

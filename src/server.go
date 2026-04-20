@@ -67,6 +67,20 @@ func NewServer() (*Server, error) {
 		}
 	}
 
+	// 启动 HTTPS 虚拟主机服务（ACME 自动签发）
+	if lc.VhostHTTPSPort > 0 && lc.ACME != nil && lc.ACME.Enabled {
+		if lc.ACME.Email == "" {
+			return nil, fmt.Errorf("启用 ACME 时必须填写 email")
+		}
+		if err := services.StartHTTPSVhost(lc.VhostHTTPSPort, services.ACMEOptions{
+			Email:    lc.ACME.Email,
+			CacheDir: lc.ACME.CacheDir,
+			Domains:  lc.ACME.Domains,
+		}); err != nil {
+			return nil, fmt.Errorf("HTTPS vhost 启动失败: %w", err)
+		}
+	}
+
 	// 设置断连回调: 对端断线时清理代理
 	server.TCP.OnDisconnect = func(connID string) {
 		services.GetTunnelService().RemovePeerProxies(connID)

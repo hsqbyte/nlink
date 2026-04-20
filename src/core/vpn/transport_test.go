@@ -41,7 +41,7 @@ func TestUDPTransportRoundTrip(t *testing.T) {
 	fakePacket := make([]byte, 24)
 	fakePacket[0] = 0x45 // IPv4, header len=20
 	fakePacket[2] = 0x00
-	fakePacket[3] = 24 // total length
+	fakePacket[3] = 24                // total length
 	copy(fakePacket[12:16], localIP1) // src IP
 	copy(fakePacket[16:20], localIP2) // dst IP
 	fakePacket[20] = 'T'

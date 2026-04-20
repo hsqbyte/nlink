@@ -157,12 +157,32 @@ func (p *TCPProxy) Close() {
 }
 
 // sendActivation 发送激活信号（携带代理名）
+// 兼容格式：[0x01][name_len:u16][name]
 func sendActivation(conn net.Conn, proxyName string) error {
 	nameBytes := []byte(proxyName)
 	buf := make([]byte, 3+len(nameBytes))
 	buf[0] = 0x01
 	binary.BigEndian.PutUint16(buf[1:3], uint16(len(nameBytes)))
 	copy(buf[3:], nameBytes)
+	_, err := conn.Write(buf)
+	return err
+}
+
+// sendActivationWithTarget 发送激活信号并携带动态目标（用于 SOCKS5 等）
+// 扩展格式：[0x02][name_len:u16][name][target_len:u16][target("host:port")]
+func sendActivationWithTarget(conn net.Conn, proxyName, target string) error {
+	if target == "" {
+		return sendActivation(conn, proxyName)
+	}
+	nameBytes := []byte(proxyName)
+	targetBytes := []byte(target)
+	buf := make([]byte, 3+len(nameBytes)+2+len(targetBytes))
+	buf[0] = 0x02
+	binary.BigEndian.PutUint16(buf[1:3], uint16(len(nameBytes)))
+	copy(buf[3:], nameBytes)
+	off := 3 + len(nameBytes)
+	binary.BigEndian.PutUint16(buf[off:off+2], uint16(len(targetBytes)))
+	copy(buf[off+2:], targetBytes)
 	_, err := conn.Write(buf)
 	return err
 }

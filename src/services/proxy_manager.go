@@ -67,6 +67,39 @@ func (ts *TunnelService) RegisterUDPProxy(connID string, name string, remotePort
 	return nil
 }
 
+// RegisterSOCKS5Proxy 注册 SOCKS5 代理 (type=socks5)
+func (ts *TunnelService) RegisterSOCKS5Proxy(connID string, name string, remotePort int, opts *ProxyOptions) error {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	if _, exists := ts.proxies[name]; exists {
+		return fmt.Errorf("代理已存在: %s", name)
+	}
+	if _, exists := ts.udpProxies[name]; exists {
+		return fmt.Errorf("代理已存在: %s", name)
+	}
+	if _, exists := ts.socks5Proxies[name]; exists {
+		return fmt.Errorf("代理已存在: %s", name)
+	}
+
+	proxy, err := NewSOCKS5Proxy(name, remotePort, connID, ts, opts)
+	if err != nil {
+		return err
+	}
+
+	ts.socks5Proxies[name] = proxy
+	ts.peerProxies[connID] = append(ts.peerProxies[connID], name)
+
+	if _, ok := ts.peerPools[connID]; !ok {
+		ts.peerPools[connID] = newPeerPool(50)
+	}
+
+	go proxy.Run()
+	peerName := ts.peerNames[connID]
+	logger.Info("[Tunnel] SOCKS5 代理注册成功: name=%s port=%d peer=%s(%s)", name, remotePort, peerName, connID)
+	return nil
+}
+
 // RegisterHTTPProxy 注册 HTTP 虚拟主机代理（type=http）
 func (ts *TunnelService) RegisterHTTPProxy(connID string, name string, customDomains []string, hostRewrite string, opts *ProxyOptions) error {
 	vhost := GetHTTPVhost()
@@ -136,6 +169,7 @@ func (ts *TunnelService) DeliverWorkConn(proxyName string, conn net.Conn) bool {
 	ts.mu.RLock()
 	proxy, ok := ts.proxies[proxyName]
 	udpProxy, uok := ts.udpProxies[proxyName]
+	sProxy, sok := ts.socks5Proxies[proxyName]
 	ts.mu.RUnlock()
 	if ok {
 		select {
@@ -148,6 +182,14 @@ func (ts *TunnelService) DeliverWorkConn(proxyName string, conn net.Conn) bool {
 	if uok {
 		select {
 		case udpProxy.WorkConnCh <- conn:
+			return true
+		default:
+			return false
+		}
+	}
+	if sok {
+		select {
+		case sProxy.WorkConnCh <- conn:
 			return true
 		default:
 			return false
@@ -212,6 +254,11 @@ func (ts *TunnelService) RemovePeerProxies(connID string) {
 				delete(ts.udpProxies, name)
 				logger.Info("[Tunnel] UDP 代理已移除: %s", name)
 			}
+			if sproxy, exists := ts.socks5Proxies[name]; exists {
+				sproxy.Close()
+				delete(ts.socks5Proxies, name)
+				logger.Info("[Tunnel] SOCKS5 代理已移除: %s", name)
+			}
 			if vhost := GetHTTPVhost(); vhost != nil {
 				vhost.Unregister(name)
 			}
@@ -241,7 +288,7 @@ func (ts *TunnelService) ListProxies() []ProxyInfo {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 
-	result := make([]ProxyInfo, 0, len(ts.proxies)+len(ts.udpProxies))
+	result := make([]ProxyInfo, 0, len(ts.proxies)+len(ts.udpProxies)+len(ts.socks5Proxies))
 	for _, p := range ts.proxies {
 		result = append(result, ProxyInfo{
 			Name:         p.Name,
@@ -270,6 +317,22 @@ func (ts *TunnelService) ListProxies() []ProxyInfo {
 			BytesIn:     p.BytesIn.Load(),
 			BytesOut:    p.BytesOut.Load(),
 			RejectedACL: p.RejectedACL.Load(),
+		})
+	}
+	for _, p := range ts.socks5Proxies {
+		result = append(result, ProxyInfo{
+			Name:         p.Name,
+			Type:         "socks5",
+			RemotePort:   p.RemotePort,
+			PeerConnID:   p.PeerConnID,
+			PeerName:     ts.peerNames[p.PeerConnID],
+			TotalConns:   p.TotalConns.Load(),
+			ActiveConns:  p.ActiveConns.Load(),
+			BytesIn:      p.BytesIn.Load(),
+			BytesOut:     p.BytesOut.Load(),
+			PoolHits:     p.PoolHits.Load(),
+			OnDemandHits: p.OnDemandHits.Load(),
+			RejectedACL:  p.RejectedACL.Load(),
 		})
 	}
 	if vhost := GetHTTPVhost(); vhost != nil {
@@ -309,11 +372,17 @@ func (ts *TunnelService) ServerStats() ServerStatsInfo {
 		bytesIn += p.BytesIn.Load()
 		bytesOut += p.BytesOut.Load()
 	}
+	for _, p := range ts.socks5Proxies {
+		totalConns += p.TotalConns.Load()
+		activeConns += p.ActiveConns.Load()
+		bytesIn += p.BytesIn.Load()
+		bytesOut += p.BytesOut.Load()
+	}
 
 	return ServerStatsInfo{
 		Uptime:      int64(ts.uptime().Seconds()),
 		PeerCount:   len(ts.peerProxies),
-		ProxyCount:  len(ts.proxies) + len(ts.udpProxies),
+		ProxyCount:  len(ts.proxies) + len(ts.udpProxies) + len(ts.socks5Proxies),
 		TotalConns:  totalConns,
 		ActiveConns: activeConns,
 		BytesIn:     bytesIn,
@@ -332,6 +401,10 @@ func (ts *TunnelService) CloseAll() {
 	for name, proxy := range ts.udpProxies {
 		proxy.Close()
 		delete(ts.udpProxies, name)
+	}
+	for name, proxy := range ts.socks5Proxies {
+		proxy.Close()
+		delete(ts.socks5Proxies, name)
 	}
 	// 清理所有连接池
 	for connID, pool := range ts.peerPools {
@@ -354,6 +427,10 @@ func (ts *TunnelService) RemoveProxy(name string) bool {
 	} else if uproxy, ok := ts.udpProxies[name]; ok {
 		uproxy.Close()
 		delete(ts.udpProxies, name)
+		removed = true
+	} else if sproxy, ok := ts.socks5Proxies[name]; ok {
+		sproxy.Close()
+		delete(ts.socks5Proxies, name)
 		removed = true
 	}
 	if removed {

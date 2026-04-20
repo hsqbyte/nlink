@@ -16,6 +16,14 @@ node:
     max_proxies_per_peer: 10        # 每对端最大代理数
     work_conn_timeout: 10           # 工作连接超时(秒)
     pool_count: 5                   # 全局连接池大小(0=禁用)
+    # vhost_http_port: 8880         # HTTP 虚拟主机端口 (type=http 共享)
+    # vhost_https_port: 8443        # HTTPS 虚拟主机端口 (需启用 acme)
+    # acme:
+    #   enabled: true
+    #   email: "admin@example.com"
+    #   cache_dir: "data/acme"
+    #   domains:                    # 白名单域名 (留空=所有已注册 vhost)
+    #     - "app.example.com"
   # 管理面板（可选）
   dashboard:
     enabled: true                   # 是否启用 (默认 true, 设为 false 可禁用)
@@ -50,3 +58,6 @@ node:
 #         local_ip: "127.0.0.1"
 #         local_port: 22
 #         remote_port: 9022
+#       - name: "socks"             # F1: SOCKS5 代理（出口节点代替访问目标）
+#         type: "socks5"
+#         remote_port: 1080

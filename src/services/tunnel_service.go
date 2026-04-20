@@ -24,6 +24,9 @@ type TunnelService struct {
 	// UDP 代理
 	udpProxies map[string]*UDPProxy
 
+	// SOCKS5 代理
+	socks5Proxies map[string]*SOCKS5Proxy
+
 	// 对端连接映射: connID -> 代理名列表
 	peerProxies map[string][]string
 
@@ -80,6 +83,7 @@ func newTunnelService(tcpServer *tcp.Server, workConnTimeout int) *TunnelService
 	return &TunnelService{
 		proxies:           make(map[string]*TCPProxy),
 		udpProxies:        make(map[string]*UDPProxy),
+		socks5Proxies:     make(map[string]*SOCKS5Proxy),
 		peerProxies:       make(map[string][]string),
 		peerNames:         make(map[string]string),
 		nameToConnID:      make(map[string]string),
