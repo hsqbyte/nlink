@@ -11,6 +11,9 @@ import (
 
 var GlobalConfig *config.Config
 
+// ConfigFilePath 记录当前加载的配置文件路径（供导入/导出 API 回写使用）
+var ConfigFilePath string
+
 func InitConfig(cfgFile string) error {
 	data, err := os.ReadFile(cfgFile)
 	if err != nil {
@@ -50,6 +53,7 @@ func InitConfig(cfgFile string) error {
 	}
 
 	GlobalConfig = &cfg
+	ConfigFilePath = cfgFile
 	logger.Info("配置加载成功: %s", cfgFile)
 	return nil
 }
@@ -61,9 +65,14 @@ func ReloadConfig(cfgFile string) (*config.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
+	return ParseAndValidate(data)
+}
+
+// ParseAndValidate 从 YAML 字节流解析并校验配置 (供 API 导入使用)
+func ParseAndValidate(data []byte) (*config.Config, error) {
 	var cfg config.Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 	if cfg.Node.Name == "" {
 		return nil, fmt.Errorf("node.name 不能为空")
@@ -87,6 +96,29 @@ func ReloadConfig(cfgFile string) (*config.Config, error) {
 		}
 	}
 	return &cfg, nil
+}
+
+// ExportYAML 将 GlobalConfig 序列化为 YAML
+func ExportYAML() ([]byte, error) {
+	if GlobalConfig == nil {
+		return nil, fmt.Errorf("GlobalConfig 为空")
+	}
+	return yaml.Marshal(GlobalConfig)
+}
+
+// SaveConfigFile 原子写入 YAML 到 ConfigFilePath
+func SaveConfigFile(data []byte) error {
+	if ConfigFilePath == "" {
+		return fmt.Errorf("ConfigFilePath 未初始化")
+	}
+	tmp := ConfigFilePath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	if err := os.Rename(tmp, ConfigFilePath); err != nil {
+		return fmt.Errorf("rename 失败: %w", err)
+	}
+	return nil
 }
 
 // ApplyReload 仅在运行时安全的字段上应用差异（token 轮换、token_prev）。

@@ -36,6 +36,10 @@ type Client struct {
 	crypto        *tcp.Crypto             // 控制通道加密
 	pingStart     atomic.Int64            // 心跳发送时间 (UnixMilli)
 	backendPools  map[string]*BackendPool // proxyName -> 后端池 (含 LB + HC)
+
+	// F8: 运行时代理持久化
+	staticProxyNames map[string]struct{} // 启动时 yaml 中的代理名集合
+	runtimeFile      string              // delta 文件路径
 }
 
 func Run(nodeName string, cfg *modelConfig.PeerConfig) error {
@@ -101,6 +105,19 @@ func (c *Client) run() error {
 
 	// 展开端口范围代理 (F5) —— 在注册前绑定到本地 cfg
 	expandProxyConfig(c.cfg)
+
+	// F8: 记录静态代理名 + 合并运行时持久化代理
+	c.staticProxyNames = make(map[string]struct{}, len(c.cfg.Proxies))
+	for _, p := range c.cfg.Proxies {
+		c.staticProxyNames[p.Name] = struct{}{}
+	}
+	c.runtimeFile = runtimeProxyFile(c.nodeName, c.cfg.Addr, c.cfg.Port)
+	if dyn, err := loadRuntimeProxies(c.runtimeFile); err != nil {
+		fmt.Fprintf(os.Stderr, "[Node:%s] 加载运行时代理失败: %v\n", c.nodeName, err)
+	} else if len(dyn) > 0 {
+		c.cfg.Proxies = mergeProxies(c.cfg.Proxies, dyn)
+		fmt.Printf("[Node:%s] 已恢复 %d 个运行时代理\n", c.nodeName, len(dyn))
+	}
 
 	// 构造后端池 (F3/F4)。openWorkConn/openPoolConn 会使用这里的池 dial。
 	c.backendPools = make(map[string]*BackendPool, len(c.cfg.Proxies))
@@ -646,6 +663,8 @@ func (c *Client) handleAddProxy(seq string, data *tcp.AddProxyData) {
 	c.backendPools[newProxy.Name] = NewBackendPool(&newProxy)
 	fmt.Printf("[Node:%s] 远程添加代理: %s -> :%d (本地 %s:%d)\n", c.nodeName, data.Name, data.RemotePort, data.LocalIP, data.LocalPort)
 
+	c.persistRuntimeProxies()
+
 	c.replyCmd(seq, "add_proxy", 200, "代理已添加", nil)
 }
 
@@ -664,6 +683,7 @@ func (c *Client) handleRemoveProxy(seq string, data *tcp.RemoveProxyData) {
 		return
 	}
 	fmt.Printf("[Node:%s] 远程删除代理: %s\n", c.nodeName, data.Name)
+	c.persistRuntimeProxies()
 	c.replyCmd(seq, "remove_proxy", 200, "代理已删除", nil)
 }
 
