@@ -1,0 +1,31 @@
+nlink __VERSION__ (__OS__/__ARCH__)
+
+最快上手 (在目标机器上 root 执行):
+
+  1. 解压并进入目录
+     tar -xzf nlink-__OS__-__ARCH__.tar.gz
+     cd nlink-__OS__-__ARCH__
+
+  2. 装到 /opt/nlink (推荐) 或自选目录
+     sudo mkdir -p /opt/nlink/config /opt/nlink/deploy
+     sudo cp nlink update.sh /opt/nlink/
+     sudo cp nlink.service /opt/nlink/deploy/
+     编辑 /opt/nlink/config/nlink.yaml
+     (参考 README.md，或在某个已运行的节点 Dashboard "设置" 页的"连接配置"里复制)
+
+  3. (推荐) 装成 systemd 服务
+     sudo cp /opt/nlink/deploy/nlink.service /etc/systemd/system/
+     sudo systemctl daemon-reload
+     sudo systemctl enable --now nlink
+     sudo journalctl -u nlink -f
+
+  4. 日常运维（一个命令搞定所有）:
+     sudo nlink-admin start         启动
+     sudo nlink-admin stop          停止
+     sudo nlink-admin restart       重启
+     sudo nlink-admin reload        热重载配置
+     sudo nlink-admin status        看状态
+     sudo nlink-admin logs -f       跟日志
+     sudo nlink-admin update        升级到最新
+
+  （nlink-admin 是 /opt/nlink/admin.sh 的软链；直接调 admin.sh 也行）

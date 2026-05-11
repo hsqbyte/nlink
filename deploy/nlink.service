@@ -1,0 +1,55 @@
+# nlink systemd 服务模板
+#
+# 安装方法（在服务器上 root 执行）:
+#   sudo cp /opt/nlink/deploy/nlink.service /etc/systemd/system/nlink.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nlink
+#
+# 切换到 systemd 后，每次更新只需:
+#   sudo /opt/nlink/deploy/update.sh
+# 脚本会自动检测 systemd 并使用 systemctl restart 重启服务。
+#
+# 如需修改安装目录或用户，编辑下面的 WorkingDirectory / ExecStart / User。
+
+[Unit]
+Description=nlink - lightweight P2P TCP tunnel + VPN
+Documentation=https://github.com/hsqbyte/nlink
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# VPN 功能需要 TUN 设备访问权限；以 root 跑最稳。
+# 不需要 VPN 的话可以改成普通用户 + setcap CAP_NET_BIND_SERVICE。
+User=root
+Group=root
+
+WorkingDirectory=/opt/nlink
+ExecStart=/opt/nlink/nlink -c /opt/nlink/config/nlink.yaml
+
+# SIGHUP 触发热重载（src/main.go 已实现）
+ExecReload=/bin/kill -HUP $MAINPID
+
+# 优雅停止：先 SIGTERM，30 秒不退再 SIGKILL
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+# 崩溃自动重启
+Restart=always
+RestartSec=3s
+
+# 日志走 journald: 用 `journalctl -u nlink -f` 查看
+StandardOutput=journal
+StandardError=journal
+
+# 安全收紧（VPN/TUN 需要保留 NET_ADMIN）
+NoNewPrivileges=false
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+# 文件描述符上限，连接池/代理多的话调高
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
