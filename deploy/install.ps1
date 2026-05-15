@@ -111,8 +111,8 @@ try {
 
     Write-Host "→ 安装二进制 + 文档"
     Copy-Item -Force (Join-Path $Extracted "nlink.exe") $TargetExe
-    # wintun.dll 必须跟 nlink.exe 同目录（VPN 需要），不带 wintun 的旧 zip 跳过
-    foreach ($f in @("wintun.dll", "README.md", "LICENSE", "INSTALL.txt")) {
+    # wintun.dll (VPN), nssm.exe (服务包装), admin.ps1 (运维入口) 必须同目录
+    foreach ($f in @("wintun.dll", "nssm.exe", "admin.ps1", "README.md", "LICENSE", "INSTALL.txt")) {
         $src = Join-Path $Extracted $f
         if (Test-Path $src) {
             Copy-Item -Force $src (Join-Path $InstallDir $f)
@@ -295,22 +295,64 @@ node:
 
         # ---- 启动选项 ----
         Write-Host ""
-        $StartNow = Ask-YN "现在启动 nlink？" "y"
-        if ($StartNow -eq "y") {
-            try {
-                $proc = Start-Process -FilePath $TargetExe `
-                                      -ArgumentList "-c", "config\nlink.yaml" `
-                                      -WorkingDirectory $InstallDir `
-                                      -PassThru
-                Start-Sleep -Seconds 1
-                if (-not $proc.HasExited) {
-                    Write-Host "✓ nlink 已启动 (PID $($proc.Id))" -ForegroundColor Green
-                    $NlinkStarted = $true
-                } else {
-                    Write-Host "服务启动失败 (exit $($proc.ExitCode))" -ForegroundColor Red
+        $NssmExe = Join-Path $InstallDir "nssm.exe"
+        $InstalledAsService = $false
+
+        if (Test-Path $NssmExe) {
+            $InstallSvc = Ask-YN "注册为 Windows 服务并启动（开机自启）？" "y"
+            if ($InstallSvc -eq "y") {
+                $LogDirFull = Join-Path $InstallDir "data\logs"
+                New-Item -ItemType Directory -Force -Path $LogDirFull | Out-Null
+                # 服务已存在则先卸再装
+                if (Get-Service -Name "nlink" -ErrorAction SilentlyContinue) {
+                    Write-Host "→ 检测到已有 nlink 服务，先卸载重装"
+                    & $NssmExe stop nlink   2>$null | Out-Null
+                    Start-Sleep -Seconds 1
+                    & $NssmExe remove nlink confirm 2>$null | Out-Null
+                    Start-Sleep -Seconds 1
                 }
-            } catch {
-                Write-Host "启动失败: $_" -ForegroundColor Red
+                & $NssmExe install nlink $TargetExe "-c" "config\nlink.yaml" | Out-Null
+                & $NssmExe set nlink AppDirectory    $InstallDir              | Out-Null
+                & $NssmExe set nlink Description     "NLink P2P tunnel daemon"| Out-Null
+                & $NssmExe set nlink Start           SERVICE_AUTO_START       | Out-Null
+                & $NssmExe set nlink AppStdout       (Join-Path $LogDirFull "stdout.log") | Out-Null
+                & $NssmExe set nlink AppStderr       (Join-Path $LogDirFull "stderr.log") | Out-Null
+                & $NssmExe set nlink AppRotateFiles  1                        | Out-Null
+                & $NssmExe set nlink AppRotateOnline 1                        | Out-Null
+                & $NssmExe set nlink AppRotateBytes  10485760                 | Out-Null
+                & $NssmExe start nlink | Out-Null
+                Start-Sleep -Seconds 1
+                $s = Get-Service -Name "nlink" -ErrorAction SilentlyContinue
+                if ($s -and $s.Status -eq "Running") {
+                    Write-Host "✓ 服务 nlink 已注册并启动" -ForegroundColor Green
+                    $NlinkStarted = $true
+                    $InstalledAsService = $true
+                } else {
+                    Write-Host "服务启动失败 (状态: $($s.Status))" -ForegroundColor Red
+                }
+            }
+        } else {
+            Write-Host "（缺少 nssm.exe，跳过服务注册步骤）" -ForegroundColor Yellow
+        }
+
+        if (-not $InstalledAsService) {
+            $StartNow = Ask-YN "现在直接启动 nlink（不注册服务）？" "y"
+            if ($StartNow -eq "y") {
+                try {
+                    $proc = Start-Process -FilePath $TargetExe `
+                                          -ArgumentList "-c", "config\nlink.yaml" `
+                                          -WorkingDirectory $InstallDir `
+                                          -PassThru
+                    Start-Sleep -Seconds 1
+                    if (-not $proc.HasExited) {
+                        Write-Host "✓ nlink 已启动 (PID $($proc.Id))" -ForegroundColor Green
+                        $NlinkStarted = $true
+                    } else {
+                        Write-Host "启动失败 (exit $($proc.ExitCode))" -ForegroundColor Red
+                    }
+                } catch {
+                    Write-Host "启动失败: $_" -ForegroundColor Red
+                }
             }
         }
     }
@@ -332,10 +374,6 @@ if ($NlinkStarted) {
     if ($Dash -eq "y") {
         Write-Host "  Dashboard:  http://localhost:$DashPort  (用户名: $DashUser)" -ForegroundColor Green
     }
-    Write-Host ""
-    Write-Host "运维命令:" -ForegroundColor Yellow
-    Write-Host "  Stop-Process -Name nlink           停止"
-    Write-Host "  cd $InstallDir; .\nlink.exe -c config\nlink.yaml   重新启动"
 } else {
     Write-Host "当前状态：未启动" -ForegroundColor Yellow
     if (-not (Test-Path $ConfigFile)) {
@@ -343,11 +381,16 @@ if ($NlinkStarted) {
     } elseif ((Get-Content $ConfigFile -Raw -ErrorAction SilentlyContinue) -match "CHANGE-ME") {
         Write-Host "  ⚠ 配置 $ConfigFile 含占位符，先 notepad 改一下" -ForegroundColor Yellow
     }
-    Write-Host ""
-    Write-Host "启动命令:" -ForegroundColor Yellow
-    Write-Host "  cd $InstallDir"
-    Write-Host "  .\nlink.exe -c config\nlink.yaml"
 }
 Write-Host ""
-Write-Host "升级：重跑同一条 install.ps1 安装命令即可。"
+Write-Host "运维命令（管理员 PowerShell）:" -ForegroundColor Yellow
+Write-Host "  $InstallDir\admin.ps1 start              启动"
+Write-Host "  $InstallDir\admin.ps1 stop               停止"
+Write-Host "  $InstallDir\admin.ps1 restart            重启"
+Write-Host "  $InstallDir\admin.ps1 status             看状态"
+Write-Host "  $InstallDir\admin.ps1 logs -Follow       跟日志"
+Write-Host "  $InstallDir\admin.ps1 install-service    注册为开机自启服务"
+Write-Host "  $InstallDir\admin.ps1 uninstall-service  卸载服务"
+Write-Host "  $InstallDir\admin.ps1 update             升级到最新版"
+Write-Host ""
 Write-Host "────────────────────────────────────────────────────────────" -ForegroundColor Cyan
