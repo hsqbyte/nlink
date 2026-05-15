@@ -9,6 +9,13 @@
 
 $ErrorActionPreference = "Stop"
 
+# ---- 控制台 UTF-8（避免中文乱码） ----
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    chcp 65001 | Out-Null
+} catch {}
+
 # ---- 参数 ----
 $Version    = if ($env:VERSION)     { $env:VERSION }     else { "latest" }
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { "C:\nlink" }
@@ -139,7 +146,7 @@ finally {
 Write-Host "────────────────────────────────────────────────────────────" -ForegroundColor Cyan
 Write-Host "✓ 安装完成: $TargetExe" -ForegroundColor Green
 Write-Host ""
-try { & $TargetExe -version } catch {}
+try { & $TargetExe -v } catch {}
 Write-Host ""
 Write-Host "下一步:" -ForegroundColor Yellow
 Write-Host "  1. 编辑配置:"
