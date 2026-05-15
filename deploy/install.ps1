@@ -220,7 +220,10 @@ node:
         Write-Host ""
         $EnablePeer = Ask-YN "现在要主动连接另一个 nlink 节点吗？" "n"
         if ($EnablePeer -eq "y") {
-            Write-Host "  注意：对端 token 必须跟本节点一致；如果你刚改了 token，对端也得同步"
+            Write-Host "  加入已有 mesh：从对端 nlink.yaml 里抄 node.token 过来。" -ForegroundColor Yellow
+            Write-Host "  本机 node.token 会被覆盖为这个值（mesh 内所有节点必须共用同一个 token）。" -ForegroundColor Yellow
+            $PeerToken = Ask-Required "对端 node.token"
+            $Token = $PeerToken
             $PeerAddr = Ask-Required "对端公网 IP / 域名"
             $PeerPort = Ask "对端 TCP 端口" "7100"
             if ($EnableVPN -eq "y") {
