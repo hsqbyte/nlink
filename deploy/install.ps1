@@ -1,11 +1,13 @@
-# nlink 一键安装脚本 (Windows / PowerShell)
+# nlink 一键安装脚本 (Windows / PowerShell, Win10 1803+ 自带 curl.exe)
 #
 # 用法（PowerShell 管理员窗口）:
-#   iwr -useb https://raw.githubusercontent.com/hsqbyte/nlink/master/deploy/install.ps1 | iex
+#   [Console]::OutputEncoding=[Text.Encoding]::UTF8; iex (curl.exe -sL https://raw.githubusercontent.com/hsqbyte/nlink/master/deploy/install.ps1 | Out-String)
 #
 # 自定义版本 / 路径:
 #   $env:VERSION="v2.9.4"; $env:INSTALL_DIR="D:\nlink"
-#   iwr -useb https://raw.githubusercontent.com/hsqbyte/nlink/master/deploy/install.ps1 | iex
+#   [Console]::OutputEncoding=[Text.Encoding]::UTF8; iex (curl.exe -sL https://raw.githubusercontent.com/hsqbyte/nlink/master/deploy/install.ps1 | Out-String)
+#
+# 不用 iwr 的原因: PS 5.1 的 Invoke-WebRequest 对 UTF-8 响应解码不可靠，中文会乱成 ???
 
 $ErrorActionPreference = "Stop"
 

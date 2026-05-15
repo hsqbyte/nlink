@@ -27,10 +27,10 @@ P2P TCP / UDP 隧道工具：单二进制、配置驱动，每个节点既能监
 curl -fsSL https://raw.githubusercontent.com/hsqbyte/nlink/master/deploy/install.sh | sudo bash
 ```
 
-**Windows**（管理员 PowerShell）— 默认装到 `C:\nlink`：
+**Windows**（管理员 PowerShell，Win10 1803+）— 默认装到 `C:\nlink`：
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/hsqbyte/nlink/master/deploy/install.ps1 | iex
+[Console]::OutputEncoding=[Text.Encoding]::UTF8; iex (curl.exe -sL https://raw.githubusercontent.com/hsqbyte/nlink/master/deploy/install.ps1 | Out-String)
 ```
 
 国内 GitHub 慢的话脚本会自动 fallback 到几个公开镜像；也可以手动指定：
