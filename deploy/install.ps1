@@ -10,10 +10,23 @@
 $ErrorActionPreference = "Stop"
 
 # ---- 控制台 UTF-8（避免中文乱码） ----
+# PS 5.1 + 中文 Windows 下，chcp/[Console]::OutputEncoding 单设一个都不够：
+# 必须 P/Invoke 改 console codepage，再同步 [Console] 输出编码。
+try {
+    $sig = '
+        [DllImport("kernel32.dll")] public static extern bool SetConsoleOutputCP(uint id);
+        [DllImport("kernel32.dll")] public static extern bool SetConsoleCP(uint id);
+    '
+    if (-not ('NLinkConsole.Win32' -as [type])) {
+        Add-Type -Namespace NLinkConsole -Name Win32 -MemberDefinition $sig | Out-Null
+    }
+    [NLinkConsole.Win32]::SetConsoleOutputCP(65001) | Out-Null
+    [NLinkConsole.Win32]::SetConsoleCP(65001) | Out-Null
+} catch {}
 try {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $OutputEncoding = [System.Text.Encoding]::UTF8
-    chcp 65001 | Out-Null
+    [Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+    $OutputEncoding           = [System.Text.Encoding]::UTF8
 } catch {}
 
 # ---- 参数 ----
