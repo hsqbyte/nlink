@@ -111,7 +111,8 @@ try {
 
     Write-Host "→ 安装二进制 + 文档"
     Copy-Item -Force (Join-Path $Extracted "nlink.exe") $TargetExe
-    foreach ($f in @("README.md", "LICENSE", "INSTALL.txt")) {
+    # wintun.dll 必须跟 nlink.exe 同目录（VPN 需要），不带 wintun 的旧 zip 跳过
+    foreach ($f in @("wintun.dll", "README.md", "LICENSE", "INSTALL.txt")) {
         $src = Join-Path $Extracted $f
         if (Test-Path $src) {
             Copy-Item -Force $src (Join-Path $InstallDir $f)
