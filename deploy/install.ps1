@@ -136,14 +136,20 @@ try {
         try { $rng.GetBytes($b) } finally { $rng.Dispose() }
         -join ($b | ForEach-Object { $_.ToString("x2") })
     }
+    # Read-Host 在 PS 5.1 走 PSReadLine，对 ! 触发历史展开 → 含 ! 的 token 报错
+    # 用 [Console]::ReadLine() 直读 stdin，跳过 PSReadLine
+    function Read-Line($prompt) {
+        [Console]::Write($prompt)
+        [Console]::ReadLine()
+    }
     function Ask($prompt, $default) {
-        $hint = if ($default) { "  $prompt [$default]" } else { "  $prompt" }
-        $a = Read-Host $hint
+        $hint = if ($default) { "  $prompt [$default]: " } else { "  ${prompt}: " }
+        $a = Read-Line $hint
         if ([string]::IsNullOrWhiteSpace($a)) { return $default } else { return $a }
     }
     function Ask-Required($prompt) {
         while ($true) {
-            $a = Read-Host "  $prompt"
+            $a = Read-Line "  ${prompt}: "
             if (-not [string]::IsNullOrWhiteSpace($a)) { return $a }
             Write-Host "    必填" -ForegroundColor Red
         }
@@ -151,7 +157,7 @@ try {
     function Ask-YN($prompt, $default) {
         $hint = if ($default -eq "y") { "Y/n" } else { "y/N" }
         while ($true) {
-            $a = Read-Host "  $prompt ($hint)"
+            $a = Read-Line "  $prompt ($hint): "
             if ([string]::IsNullOrWhiteSpace($a)) { $a = $default }
             switch -Regex ($a) {
                 '^(y|yes)$' { return "y" }
